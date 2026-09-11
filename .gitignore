@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Archivos de referencia sueltos que dejaste en la raíz para revisión, no forman parte del proyecto.
+gocafe_frontend.zip
+interfaz.png
+diseño.png
+cafes.jpg

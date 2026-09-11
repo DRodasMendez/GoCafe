@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum CoffeeType {
+  pergamino
+  natural
+  oro
+}
+
+enum OrderStatus {
+  Recibido       @map("Recibido")
+  EnPreparacion  @map("En preparación")
+  EnTueste       @map("En tueste")
+  EnMolienda     @map("En molienda")
+  EnEmpaque      @map("En empaque")
+  Finalizado     @map("Finalizado")
+}
+
+enum ProductionStatus {
+  en_proceso
+  terminada
+}
+
+enum RoastType {
+  claro
+  medio
+  oscuro
+}
+
+enum SegundaType {
+  oro
+  natural
+}
+
+enum MovementKind {
+  entrada
+  salida
+}
+
+enum ReferenciaTipo {
+  produccion_gourmet
+  produccion_blend
+  manual
+}
+
+// ---------------------------------------------------------------------------
+// Clientes / Órdenes (café que pertenece al cliente, Go Café solo lo procesa)
+// ---------------------------------------------------------------------------
+
+model Cliente {
+  id        String   @id @default(uuid())
+  nombre    String
+  ciudad    String
+  telefono  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  ordenes Orden[]
+
+  @@map("clientes")
+}
+
+model Orden {
+  id  String @id @default(uuid())
+  /** Entero autoincremental (atómico por Postgres); el folio "GC-0001" se arma en la app a partir de este número, nunca se guarda como texto para no arrastrar el bug de folios duplicados que tenía la versión local. */
+  seq Int    @unique @default(autoincrement())
+
+  clienteId String  @map("client_id")
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  receivedDate  DateTime @map("received_date") @db.Date
+  estimatedDate DateTime @map("estimated_date") @db.Date
+
+  coffeeType      CoffeeType
+  initialWeight   Decimal    @map("initial_weight") @db.Decimal(10, 2)
+  humidity        Decimal    @db.Decimal(5, 2)
+  cleaningWeight  Decimal    @default(0) @map("cleaning_weight") @db.Decimal(10, 2)
+  threshingWeight Decimal    @default(0) @map("threshing_weight") @db.Decimal(10, 2)
+  finalWeight     Decimal    @default(0) @map("final_weight") @db.Decimal(10, 2)
+
+  roastType String @map("roast_type")
+  grindType String @map("grind_type")
+
+  totalPrice Decimal @default(0) @map("total_price") @db.Decimal(10, 2)
+  pagado     Boolean @default(false)
+
+  actualFullBags       Int     @default(0) @map("actual_full_bags")
+  actualRemainderGrams Decimal @default(0) @map("actual_remainder_grams") @db.Decimal(10, 2)
+
+  /** Mapa fijo { tipoDeEmpaque: cantidad } — se lee/escribe siempre completo, no hace falta tabla aparte.
+      El tipo de empaque se valida en la app (ver PACKAGE_TYPES en zod), no con un enum de Postgres,
+      así el texto (con acentos, ej. "trilaminada con válvula") es idéntico al que ya usa el frontend. */
+  packageAllocation     Json   @default("{}") @map("package_allocation")
+  incompletePackageType String @map("incomplete_package_type")
+
+  status          OrderStatus
+  currentStepName String      @map("current_step_name")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  finalizedAt DateTime? @map("finalized_at")
+
+  roasts OrdenTueste[]
+
+  @@map("ordenes")
+}
+
+model OrdenTueste {
+  id      String @id @default(uuid())
+  ordenId String @map("order_id")
+  orden   Orden  @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  /** Posición dentro del lote (los tuestes de una orden/lote son una lista ordenada). */
+  seq     Int
+
+  weightLb Decimal @map("weight_lb") @db.Decimal(10, 2)
+
+  initialTemp        Decimal @map("initial_temp") @db.Decimal(6, 2)
+  returnTemp         Decimal @map("return_temp") @db.Decimal(6, 2)
+  returnTime         String  @map("return_time")
+  dehydrationTemp    Decimal @map("dehydration_temp") @db.Decimal(6, 2)
+  dehydrationTime    String  @map("dehydration_time")
+  caramelizationTemp Decimal @map("caramelization_temp") @db.Decimal(6, 2)
+  caramelizationTime String  @map("caramelization_time")
+  crackTemp          Decimal @map("crack_temp") @db.Decimal(6, 2)
+  crackTime          String  @map("crack_time")
+  finalTemp          Decimal @map("final_temp") @db.Decimal(6, 2)
+  finalTime          String  @map("final_time")
+
+  notes String @default("")
+
+  @@unique([ordenId, seq])
+  @@map("orden_tuestes")
+}
+
+// ---------------------------------------------------------------------------
+// Producción (café propio de Go Café): Gourmet
+// ---------------------------------------------------------------------------
+
+model ProduccionGourmet {
+  id  String @id @default(uuid())
+  seq Int    @unique @default(autoincrement())
+
+  status          ProductionStatus @default(en_proceso)
+  currentStepName String           @map("current_step_name")
+  fecha           DateTime         @db.Date
+
+  pergaminoUsedLb    Decimal   @map("pergamino_used_lb") @db.Decimal(10, 2)
+  trilladoWeightLb   Decimal   @default(0) @map("trillado_weight_lb") @db.Decimal(10, 2)
+  roastType          RoastType @default(medio) @map("roast_type")
+  pesoTuesteResultLb Decimal   @default(0) @map("peso_tueste_result_lb") @db.Decimal(10, 2)
+  reservaCafeteriaLb Decimal   @default(0) @map("reserva_cafeteria_lb") @db.Decimal(10, 2)
+  molidoWeightLb     Decimal   @default(0) @map("molido_weight_lb") @db.Decimal(10, 2)
+  empaqueComercialLb Decimal   @default(0) @map("empaque_comercial_lb") @db.Decimal(10, 2)
+  empaqueEspecialLb  Decimal   @default(0) @map("empaque_especial_lb") @db.Decimal(10, 2)
+
+  notas String @default("")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  finalizedAt DateTime? @map("finalized_at")
+
+  roasts ProduccionGourmetTueste[]
+
+  @@map("producciones_gourmet")
+}
+
+model ProduccionGourmetTueste {
+  id           String            @id @default(uuid())
+  produccionId String            @map("produccion_id")
+  produccion   ProduccionGourmet @relation(fields: [produccionId], references: [id], onDelete: Cascade)
+  seq          Int
+
+  weightLb Decimal @map("weight_lb") @db.Decimal(10, 2)
+  notes    String  @default("")
+
+  @@unique([produccionId, seq])
+  @@map("producciones_gourmet_tuestes")
+}
+
+// ---------------------------------------------------------------------------
+// Producción (café propio de Go Café): Blend
+// ---------------------------------------------------------------------------
+
+model ProduccionBlend {
+  id  String @id @default(uuid())
+  seq Int    @unique @default(autoincrement())
+
+  status          ProductionStatus @default(en_proceso)
+  currentStepName String           @map("current_step_name")
+  fecha           DateTime         @db.Date
+
+  cantidadPlanificadaLb Decimal     @map("cantidad_planificada_lb") @db.Decimal(10, 2)
+  segundaType           SegundaType @map("segunda_type")
+  pergaminoUsedLb       Decimal     @map("pergamino_used_lb") @db.Decimal(10, 2)
+  segundaUsedLb         Decimal     @map("segunda_used_lb") @db.Decimal(10, 2)
+  trilladoWeightLb      Decimal     @default(0) @map("trillado_weight_lb") @db.Decimal(10, 2)
+  pesoTuesteResultLb    Decimal     @default(0) @map("peso_tueste_result_lb") @db.Decimal(10, 2)
+  molidoMezclaWeightLb  Decimal     @default(0) @map("molido_mezcla_weight_lb") @db.Decimal(10, 2)
+  actualFullBags        Int         @default(0) @map("actual_full_bags")
+  actualRemainderGrams  Decimal     @default(0) @map("actual_remainder_grams") @db.Decimal(10, 2)
+
+  notas String @default("")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  finalizedAt DateTime? @map("finalized_at")
+
+  roasts ProduccionBlendTueste[]
+
+  @@map("producciones_blend")
+}
+
+model ProduccionBlendTueste {
+  id           String          @id @default(uuid())
+  produccionId String          @map("produccion_id")
+  produccion   ProduccionBlend @relation(fields: [produccionId], references: [id], onDelete: Cascade)
+  seq          Int
+
+  weightLb Decimal @map("weight_lb") @db.Decimal(10, 2)
+  notes    String  @default("")
+
+  @@unique([produccionId, seq])
+  @@map("producciones_blend_tuestes")
+}
+
+// ---------------------------------------------------------------------------
+// Inventario
+// ---------------------------------------------------------------------------
+
+/** Una fila por material — agregar un material nuevo no requiere migración. */
+model InventarioStock {
+  material   String   @id
+  cantidadLb Decimal  @default(0) @map("cantidad_lb") @db.Decimal(10, 2)
+  /** Solo aplica a materia prima (pergamino/oro/natural); null en el resto. */
+  minimoLb   Decimal? @map("minimo_lb") @db.Decimal(10, 2)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("inventario_stock")
+}
+
+/** Kardex: ledger de solo-inserción. Una corrección se registra como movimiento nuevo (reversión + entrada correcta), nunca se reescribe una fila pasada. */
+model InventarioMovimiento {
+  id              String          @id @default(uuid())
+  fecha           DateTime        @default(now())
+  material        String
+  tipo            MovementKind
+  cantidadLb      Decimal         @map("cantidad_lb") @db.Decimal(10, 2)
+  motivo          String
+  referenciaTipo  ReferenciaTipo? @map("referencia_tipo")
+  referenciaId    String?         @map("referencia_id")
+  saldoResultante Decimal         @map("saldo_resultante") @db.Decimal(10, 2)
+
+  @@index([material, fecha])
+  @@map("inventario_movimientos")
+}
+
+// ---------------------------------------------------------------------------
+// Usuarios (por ahora, un solo usuario administrador)
+// ---------------------------------------------------------------------------
+
+model Usuario {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("usuarios")
+}

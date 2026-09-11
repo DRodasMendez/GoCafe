@@ -1,0 +1,48 @@
+import 'dotenv/config'
+import bcrypt from 'bcryptjs'
+import { PrismaClient } from '@prisma/client'
+import { ALL_MATERIALS, RAW_MATERIALS } from '../src/modules/inventario/inventario.constants'
+
+const prisma = new PrismaClient()
+
+async function seedUsuario() {
+  const username = process.env.SEED_USERNAME
+  const password = process.env.SEED_PASSWORD
+  if (!username || !password) {
+    console.log('SEED_USERNAME / SEED_PASSWORD no están definidos en .env — se omite la creación del usuario.')
+    return
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10)
+  await prisma.usuario.upsert({
+    where: { username },
+    create: { username, passwordHash },
+    update: { passwordHash },
+  })
+  console.log(`Usuario "${username}" listo (contraseña actualizada si ya existía).`)
+}
+
+/** Crea la fila de cada material si no existe todavía, con cantidad 0 (y el mínimo de 25 lb en materia prima, igual que el default de la versión local). No pisa cantidades ya cargadas. */
+async function seedInventarioStock() {
+  for (const material of ALL_MATERIALS) {
+    const minimoLb = (RAW_MATERIALS as readonly string[]).includes(material) ? 25 : null
+    await prisma.inventarioStock.upsert({
+      where: { material },
+      create: { material, cantidadLb: 0, minimoLb },
+      update: {},
+    })
+  }
+  console.log(`Inventario inicializado (${ALL_MATERIALS.length} materiales).`)
+}
+
+async function main() {
+  await seedUsuario()
+  await seedInventarioStock()
+}
+
+main()
+  .catch(err => {
+    console.error(err)
+    process.exit(1)
+  })
+  .finally(() => prisma.$disconnect())
