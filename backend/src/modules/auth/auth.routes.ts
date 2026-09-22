@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 import { asyncHandler } from '../../middleware/asyncHandler'
 import { requireAuth } from '../../middleware/auth'
@@ -11,8 +12,19 @@ const loginSchema = z.object({
   password: z.string().min(1),
 })
 
+/** Único usuario admin: sin este freno, /login es un blanco directo para fuerza bruta. Desactivado en tests (misma app, mismo IP, cientos de logins por corrida). */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { error: 'Demasiados intentos de inicio de sesión. Espera unos minutos e inténtalo de nuevo.' },
+})
+
 authRouter.post(
   '/login',
+  loginLimiter,
   asyncHandler(async (req, res) => {
     const { username, password } = loginSchema.parse(req.body)
     const result = await authService.login(username, password)

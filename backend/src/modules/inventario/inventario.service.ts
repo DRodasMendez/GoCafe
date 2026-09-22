@@ -16,6 +16,20 @@ async function currentStock(db: Db, material: StockMaterial): Promise<number> {
   return row ? toNumber(row.cantidadLb) : 0
 }
 
+/**
+ * Igual que currentStock, pero bloquea la fila (SELECT ... FOR UPDATE) hasta que la transacción
+ * que la llama termine. Úsalo justo antes de validar-y-restar existencias: sin este candado, dos
+ * finalizaciones concurrentes podrían leer el mismo saldo antes de que ninguna hiciera commit y
+ * dejar el inventario en negativo. Solo tiene efecto real dentro de un prisma.$transaction — todos
+ * los call sites de abajo ya pasan `tx`.
+ */
+async function currentStockForUpdate(db: Db, material: StockMaterial): Promise<number> {
+  const rows = await db.$queryRaw<{ cantidad_lb: Prisma.Decimal }[]>(
+    Prisma.sql`SELECT cantidad_lb FROM inventario_stock WHERE material = ${material} FOR UPDATE`
+  )
+  return rows[0] ? toNumber(rows[0].cantidad_lb) : 0
+}
+
 async function addMovement(
   db: Db,
   material: StockMaterial,
@@ -118,7 +132,7 @@ export async function consumirMateriaPrima(
   referencia: { referenciaTipo: 'produccion_gourmet' | 'produccion_blend'; referenciaId: string }
 ) {
   if (cantidadLb <= 0) return
-  const disponible = await currentStock(db, material)
+  const disponible = await currentStockForUpdate(db, material)
   if (disponible < cantidadLb) {
     throw new AppError(
       `No hay suficiente ${STOCK_LABELS[material]} en inventario. Disponible: ${disponible.toFixed(2)} lb, se necesitan ${cantidadLb.toFixed(2)} lb.`
@@ -137,7 +151,7 @@ export async function consumirMateriaPrima(
 export async function registrarSalidaMateriaPrima(material: RawMaterialType, cantidadLb: number, motivo: string) {
   if (cantidadLb <= 0) throw new AppError('La cantidad debe ser mayor que 0.')
   await prisma.$transaction(async tx => {
-    const disponible = await currentStock(tx, material)
+    const disponible = await currentStockForUpdate(tx, material)
     if (disponible < cantidadLb) {
       throw new AppError(`No hay suficiente ${STOCK_LABELS[material]} en inventario. Disponible: ${disponible.toFixed(2)} lb.`)
     }
@@ -173,7 +187,7 @@ export async function agregarGranoCafeteria(
 export async function descontarGranoCafeteria(tipo: StockMaterial, cantidadLb: number, motivo: string) {
   if (cantidadLb <= 0) throw new AppError('La cantidad debe ser mayor que 0.')
   await prisma.$transaction(async tx => {
-    const disponible = await currentStock(tx, tipo)
+    const disponible = await currentStockForUpdate(tx, tipo)
     if (disponible < cantidadLb) {
       throw new AppError(`Solo hay ${disponible.toFixed(2)} lb disponibles de ${STOCK_LABELS[tipo]}.`)
     }
@@ -206,7 +220,7 @@ export async function agregarGourmetTerminado(db: Db, comercialLb: number, espec
 export async function descontarGourmetTerminado(tipo: 'gourmet_comercial' | 'gourmet_especial', cantidadLb: number, motivo: string) {
   if (cantidadLb <= 0) throw new AppError('La cantidad debe ser mayor que 0.')
   await prisma.$transaction(async tx => {
-    const disponible = await currentStock(tx, tipo)
+    const disponible = await currentStockForUpdate(tx, tipo)
     if (disponible < cantidadLb) {
       throw new AppError(`Solo hay ${disponible.toFixed(2)} lb disponibles de ${STOCK_LABELS[tipo]}.`)
     }
@@ -231,7 +245,7 @@ export async function agregarBlendTerminado(db: Db, packagedLb: number, code: st
 export async function enviarBlendTerminado(bolsas: number, motivo: string) {
   if (bolsas <= 0) throw new AppError('Ingresa una cantidad de bolsas mayor que 0.')
   await prisma.$transaction(async tx => {
-    const disponibleLb = await currentStock(tx, 'blend_bolsas')
+    const disponibleLb = await currentStockForUpdate(tx, 'blend_bolsas')
     const disponibles = bagsEquivalent(disponibleLb).fullBags
     if (bolsas > disponibles) throw new AppError(`Solo hay ${disponibles} bolsas de Blend disponibles.`)
     const lb = bagsToLb(bolsas)
