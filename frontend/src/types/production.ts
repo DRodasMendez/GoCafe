@@ -13,13 +13,6 @@ export const RAW_MATERIAL_LABELS: Record<RawMaterialType, string> = {
 /** "Oro" y "Natural" son ambos café de segunda; el Blend usa uno u otro, nunca ambos a la vez. */
 export type SegundaType = Extract<RawMaterialType, 'oro' | 'natural'>
 
-export type PackagingType = 'comercial' | 'especial'
-
-export const PACKAGING_LABELS: Record<PackagingType, string> = {
-  comercial: 'Comercial',
-  especial: 'Especial',
-}
-
 export const ROAST_TYPES = ['claro', 'medio', 'oscuro'] as const
 export type RoastType = typeof ROAST_TYPES[number]
 
@@ -92,8 +85,6 @@ export interface BlendProduction {
   molidoMezclaWeightLb: number
   actualFullBags: number
   actualRemainderGrams: number
-  /** Tipo de bolsa física (inventario de empaque) usada para las actualFullBags de este lote. */
-  bagType: PackagingType
   notas: string
   createdAt: string
   updatedAt: string

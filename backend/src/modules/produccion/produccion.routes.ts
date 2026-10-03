@@ -97,7 +97,6 @@ const updateBlendSchema = z.object({
   molidoMezclaWeightLb: peso.optional(),
   actualFullBags: bolsas.optional(),
   actualRemainderGrams: peso.optional(),
-  bagType: z.enum(['comercial', 'especial']).optional(),
   notas: notas.optional(),
 })
 

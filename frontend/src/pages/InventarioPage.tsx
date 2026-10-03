@@ -69,6 +69,8 @@ export default function InventarioPage() {
 
   const empaqueClientes = empaqueStock.filter(e => (PACKAGE_TYPES as readonly string[]).includes(e.tipo))
   const empaqueProduccion = empaqueStock.filter(e => !(PACKAGE_TYPES as readonly string[]).includes(e.tipo))
+  const empaqueGourmet = empaqueProduccion.filter(e => e.tipo === 'comercial' || e.tipo === 'especial')
+  const bolsasBlendVacias = empaqueStock.find(e => e.tipo === 'blend')?.cantidad ?? 0
 
   return (
     <div className="space-y-6">
@@ -175,7 +177,7 @@ export default function InventarioPage() {
                 <div className="card p-5">
                   <p className="text-sm text-stone-500">Bolsas vacías en bodega (para los próximos lotes)</p>
                   <div className="mt-3 grid grid-cols-2 gap-3">
-                    {empaqueProduccion.map(item => (
+                    {empaqueGourmet.map(item => (
                       <div key={item.tipo} className="rounded-xl bg-stone-100 p-4">
                         <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{item.label.replace(' (Producción propia)', '')}</p>
                         <p className="mt-1 text-2xl font-black text-stone-900">{item.cantidad}</p>
@@ -193,8 +195,15 @@ export default function InventarioPage() {
 
           {tab === 'terminado-blend' && (
             <>
-              <div className="max-w-md">
+              <div className="grid gap-4 md:grid-cols-2">
                 <FinishedStockCard label="Blend" icon={Blend} lb={stock.blendFinishedLb} bags={blendBags} onSalida={() => setBlendSalidaOpen(true)} actionLabel="Enviar al mayoreo" />
+                <div className="card p-5">
+                  <p className="text-sm text-stone-500">Bolsas de Blend vacías en bodega (para los próximos lotes)</p>
+                  <p className="mt-2 text-2xl font-black text-stone-900">{bolsasBlendVacias}</p>
+                  <button type="button" className="mt-3 text-xs font-semibold text-amber-700 hover:underline" onClick={() => setTab('empaque')}>
+                    Comprar más / ver historial →
+                  </button>
+                </div>
               </div>
               <MonthlyHistory title="Historial de movimientos — Blend" materials={['blendBolsas']} />
             </>

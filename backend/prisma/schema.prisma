@@ -218,8 +218,6 @@ model ProduccionBlend {
   molidoMezclaWeightLb  Decimal     @default(0) @map("molido_mezcla_weight_lb") @db.Decimal(10, 2)
   actualFullBags        Int         @default(0) @map("actual_full_bags")
   actualRemainderGrams  Decimal     @default(0) @map("actual_remainder_grams") @db.Decimal(10, 2)
-  /** Tipo de bolsa física (inventario de empaque) usada para las actualFullBags de este lote: "comercial" o "especial". */
-  bagType String @default("comercial") @map("bag_type")
 
   notas String @default("")
 

@@ -8,7 +8,6 @@ import {
   type BlendStep,
   type GourmetProduction,
   type GourmetStep,
-  type PackagingType,
   type Production,
   type ProductionStatus,
   type RoastBatch,
@@ -74,7 +73,6 @@ interface BlendDto {
   molidoMezclaWeightLb: string
   actualFullBags: number
   actualRemainderGrams: string
-  bagType: PackagingType
   notas: string
   createdAt: string
   updatedAt: string
@@ -126,7 +124,6 @@ function fromBlendDto(dto: BlendDto): BlendProduction {
     molidoMezclaWeightLb: Number(dto.molidoMezclaWeightLb),
     actualFullBags: dto.actualFullBags,
     actualRemainderGrams: Number(dto.actualRemainderGrams),
-    bagType: dto.bagType,
     notas: dto.notas,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -351,7 +348,6 @@ export async function updateBlendProduction(id: string, patch: BlendPatch): Prom
   if (patch.molidoMezclaWeightLb !== undefined) body.molidoMezclaWeightLb = patch.molidoMezclaWeightLb
   if (patch.actualFullBags !== undefined) body.actualFullBags = patch.actualFullBags
   if (patch.actualRemainderGrams !== undefined) body.actualRemainderGrams = patch.actualRemainderGrams
-  if (patch.bagType !== undefined) body.bagType = patch.bagType
   if (patch.notas !== undefined) body.notas = patch.notas
 
   const dto = await apiFetch<BlendDto>(`/api/produccion/blend/${id}`, { method: 'PATCH', body })

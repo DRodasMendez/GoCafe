@@ -6,7 +6,6 @@ import { packagedWeightLb } from '../../utils/production'
 import * as inventarioService from '../inventario/inventario.service'
 import * as empaqueService from '../inventario/empaque.service'
 import { granoMaterial } from '../inventario/inventario.constants'
-import type { ProductionPackageType } from '../inventario/empaque.constants'
 import { formatFolio } from '../../utils/folio'
 
 const ROASTS_ORDER = { orderBy: { seq: 'asc' } } as const
@@ -231,7 +230,6 @@ interface BlendPatch {
   molidoMezclaWeightLb?: number
   actualFullBags?: number
   actualRemainderGrams?: number
-  bagType?: ProductionPackageType
   notas?: string
 }
 
@@ -288,7 +286,8 @@ export async function finalizeBlendProduction(id: string) {
     await inventarioService.agregarBlendTerminado(tx, packagedLb, code)
 
     // Bolsas físicas (inventario de empaque) usadas para envasar las actualFullBags de este lote.
-    await empaqueService.consumirEmpaque(tx, p.bagType as ProductionPackageType, p.actualFullBags, `Producción Blend ${code}`, {
+    // Blend tiene su propia bolsa (no se divide en Comercial/Especial como Gourmet).
+    await empaqueService.consumirEmpaque(tx, 'blend', p.actualFullBags, `Producción Blend ${code}`, {
       referenciaTipo: 'produccion_blend',
       referenciaId: code,
     })

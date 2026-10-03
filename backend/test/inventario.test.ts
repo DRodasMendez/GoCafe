@@ -186,10 +186,10 @@ describe('salidas de producto terminado / grano reservado', () => {
 })
 
 describe('inventario de empaque (bolsas)', () => {
-  it('devuelve los 8 tipos en 0 aunque no haya filas todavía', async () => {
+  it('devuelve los 9 tipos en 0 aunque no haya filas todavía', async () => {
     const res = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
     expect(res.status).toBe(200)
-    expect(res.body).toHaveLength(8)
+    expect(res.body).toHaveLength(9)
     expect(res.body.every((s: any) => s.cantidad === 0)).toBe(true)
   })
 

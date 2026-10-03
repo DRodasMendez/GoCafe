@@ -69,7 +69,7 @@ describe('POST /api/produccion/blend/:id/finalizar', () => {
 
   it('descuenta pergamino + segunda y agrega bolsas de blend terminado', async () => {
     const id = await startLote()
-    await setEmpaqueStock('comercial', 10)
+    await setEmpaqueStock('blend', 10)
     await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0 })
 
     const res = await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
@@ -84,24 +84,26 @@ describe('POST /api/produccion/blend/:id/finalizar', () => {
     expect(byMaterial.blend_bolsas).toBeCloseTo((10 * 350) / 453.59237, 2)
   })
 
-  it('descuenta del tipo de bolsa elegido ("especial"), no del otro', async () => {
+  it('descuenta de su propia bolsa de Blend, no de las bolsas Comercial/Especial de Gourmet', async () => {
     const id = await startLote()
-    await setEmpaqueStock('comercial', 1) // no debe tocarse
-    await setEmpaqueStock('especial', 10)
-    await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0, bagType: 'especial' })
+    await setEmpaqueStock('comercial', 20) // no deben tocarse
+    await setEmpaqueStock('especial', 20)
+    await setEmpaqueStock('blend', 10)
+    await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0 })
 
     const res = await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
     expect(res.status).toBe(200)
 
     const empaque = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
     const byTipo = Object.fromEntries(empaque.body.map((s: any) => [s.tipo, s.cantidad]))
-    expect(byTipo.especial).toBe(0)
-    expect(byTipo.comercial).toBe(1)
+    expect(byTipo.blend).toBe(0)
+    expect(byTipo.comercial).toBe(20)
+    expect(byTipo.especial).toBe(20)
   })
 
-  it('falla al finalizar si no hay suficientes bolsas del tipo elegido', async () => {
+  it('falla al finalizar si no hay suficientes bolsas de Blend', async () => {
     const id = await startLote()
-    await setEmpaqueStock('comercial', 2)
+    await setEmpaqueStock('blend', 2)
     await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0 })
 
     const res = await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
@@ -134,7 +136,7 @@ describe('POST /api/produccion/blend/:id/finalizar', () => {
   it('no permite modificar ni borrar un lote ya finalizado', async () => {
     const id = await startLote()
     await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
-    const patch = await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ bagType: 'especial' })
+    const patch = await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 99 })
     expect(patch.status).toBe(400)
     const del = await request(app).delete(`/api/produccion/blend/${id}`).set(authHeader(token))
     expect(del.status).toBe(400)

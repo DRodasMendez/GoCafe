@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Blend, Check, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BAG_GRAMS, MAX_ROAST_LB, packagingFromLb, todayISODate } from '../utils/production'
-import { BLEND_STEPS, PACKAGING_LABELS, RAW_MATERIAL_LABELS, blendMermaLb, roastedAllocatedLb, type BlendStep, type PackagingType, type RoastBatch, type SegundaType } from '../types/production'
+import { BLEND_STEPS, RAW_MATERIAL_LABELS, blendMermaLb, roastedAllocatedLb, type BlendStep, type RoastBatch, type SegundaType } from '../types/production'
 import {
   finalizeBlendProduction,
   startBlendProduction,
@@ -11,7 +11,7 @@ import {
   useProductionsLoaded,
   validateBlendPlan,
 } from '../store/productionStore'
-import { useInventory } from '../store/inventoryStore'
+import { useEmpaqueStock, useInventory } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
 import { Field, SectionTitle, Stat } from '../components/FormParts'
 
@@ -53,7 +53,7 @@ function BlendForm({ id }: { id?: string }) {
   const [molidoMezclaWeight, setMolidoMezclaWeight] = useState(() => existing?.molidoMezclaWeightLb ? String(existing.molidoMezclaWeightLb) : '')
   const [actualFullBags, setActualFullBags] = useState<number | ''>(() => existing?.actualFullBags ?? '')
   const [actualRemainderGrams, setActualRemainderGrams] = useState<number | ''>(() => existing?.actualRemainderGrams ?? '')
-  const [bagType, setBagType] = useState<PackagingType>(() => existing?.bagType ?? 'comercial')
+  const bolsasBlendDisponibles = useEmpaqueStock().find(e => e.tipo === 'blend')?.cantidad ?? 0
 
   const cantidadLb = Number(cantidadStr) || 0
   const plan = useMemo(() => validateBlendPlan(cantidadLb, segundaType), [cantidadLb, segundaType])
@@ -124,7 +124,6 @@ function BlendForm({ id }: { id?: string }) {
     molidoMezclaWeightLb: molidoMezclaLb,
     actualFullBags: effectiveFullBags,
     actualRemainderGrams: effectiveRemainder,
-    bagType,
     notas: '',
     currentStepName: BLEND_STEPS[step],
   })
@@ -409,15 +408,10 @@ function BlendForm({ id }: { id?: string }) {
             <p className="mt-3 text-sm text-stone-700"><b>Resultado registrado:</b> {effectiveFullBags} bolsas completas{effectiveRemainder > 0 ? ` + sobrante de ${effectiveRemainder.toFixed(1)} g` : ''}.</p>
           </div>
 
-          <div className="mt-5 max-w-xs">
-            <Field label="Tipo de bolsa física utilizada">
-              <select className="select" value={bagType} onChange={e => setBagType(e.target.value as PackagingType)}>
-                <option value="comercial">{PACKAGING_LABELS.comercial}</option>
-                <option value="especial">{PACKAGING_LABELS.especial}</option>
-              </select>
-            </Field>
-            <p className="mt-1.5 text-xs text-stone-500">Se descontarán {effectiveFullBags} bolsas de este tipo del inventario de empaque al finalizar.</p>
-          </div>
+          <p className={`mt-5 rounded-xl p-3 text-sm ${effectiveFullBags > bolsasBlendDisponibles ? 'border border-red-200 bg-red-50 font-medium text-red-700' : 'bg-stone-100 text-stone-600'}`}>
+            Al finalizar se descontarán <b>{effectiveFullBags}</b> bolsas de Blend del inventario de empaque (hay <b>{bolsasBlendDisponibles}</b> en bodega).
+            {effectiveFullBags > bolsasBlendDisponibles && ' No alcanzan: registra la compra en Inventario → Empaque antes de finalizar.'}
+          </p>
         </section>
       )}
 
@@ -432,7 +426,6 @@ function BlendForm({ id }: { id?: string }) {
             <Stat label="Molido y mezcla" value={`${molidoMezclaLb.toFixed(2)} lb`} />
             <Stat label="Bolsas completas" value={`${effectiveFullBags}`} />
             <Stat label="Sobrante" value={`${effectiveRemainder.toFixed(1)} g`} />
-            <Stat label="Tipo de bolsa" value={PACKAGING_LABELS[bagType]} />
             <Stat label="Fecha" value={fecha} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
