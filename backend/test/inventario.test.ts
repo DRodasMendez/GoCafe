@@ -12,10 +12,10 @@ beforeEach(async () => {
 afterAll(disconnectDb)
 
 describe('GET /api/inventario/stock', () => {
-  it('devuelve los 9 materiales en 0 aunque no haya filas todavía (base recién migrada)', async () => {
+  it('devuelve los 8 materiales en 0 aunque no haya filas todavía (base recién migrada)', async () => {
     const res = await request(app).get('/api/inventario/stock').set(authHeader(token))
     expect(res.status).toBe(200)
-    expect(res.body).toHaveLength(9)
+    expect(res.body).toHaveLength(8)
     expect(res.body.every((s: any) => s.cantidadLb === 0)).toBe(true)
   })
 })
@@ -98,12 +98,48 @@ describe('salidas de producto terminado / grano reservado', () => {
     expect(excede.status).toBe(400)
   })
 
-  it('descuenta gourmet comercial/especial terminado', async () => {
-    await prisma.inventarioStock.create({ data: { material: 'gourmet_especial', cantidadLb: 20 } })
-    const res = await request(app).post('/api/inventario/gourmet/especial/salida').set(authHeader(token)).send({ cantidadLb: 5, motivo: 'Venta' })
-    expect(res.status).toBe(204)
+  it('envía bolsas de Gourmet por tipo y falla si no hay suficientes de ese tipo', async () => {
+    // 10 bolsas llenas (6 Comercial + 4 Especial), sin café suelto.
+    await prisma.inventarioStock.create({ data: { material: 'gourmet', cantidadLb: (10 * 350) / 453.59237 } })
+    await prisma.inventarioGourmetEmpacado.createMany({ data: [{ tipoBolsa: 'comercial', bolsas: 6 }, { tipoBolsa: 'especial', bolsas: 4 }] })
+
+    const excede = await request(app).post('/api/inventario/gourmet/salida').set(authHeader(token)).send({ tipoBolsa: 'especial', bolsas: 5, motivo: 'Venta' })
+    expect(excede.status).toBe(400)
+
+    const ok = await request(app).post('/api/inventario/gourmet/salida').set(authHeader(token)).send({ tipoBolsa: 'comercial', bolsas: 2, motivo: 'Venta' })
+    expect(ok.status).toBe(204)
+
+    const empacado = await request(app).get('/api/inventario/gourmet/empacado').set(authHeader(token))
+    expect(empacado.body.comercial).toBe(4)
+    expect(empacado.body.especial).toBe(4)
     const stock = await request(app).get('/api/inventario/stock').set(authHeader(token))
-    expect(stock.body.find((s: any) => s.material === 'gourmet_especial').cantidadLb).toBe(15)
+    expect(stock.body.find((s: any) => s.material === 'gourmet').cantidadLb).toBeCloseTo((8 * 350) / 453.59237, 1)
+  })
+
+  it('empacar sobrante: el café suelto pasa a bolsa llena y descuenta la bolsa vacía, sin cambiar las libras', async () => {
+    // 2 bolsas llenas + 400 g sueltos (alcanza para 1 bolsa más).
+    const totalLb = (2 * 350 + 400) / 453.59237
+    await prisma.inventarioStock.create({ data: { material: 'gourmet', cantidadLb: totalLb } })
+    await prisma.inventarioGourmetEmpacado.create({ data: { tipoBolsa: 'comercial', bolsas: 2 } })
+    await prisma.inventarioEmpaqueStock.create({ data: { tipo: 'especial', cantidad: 3 } })
+
+    const excede = await request(app).post('/api/inventario/gourmet/empacar-sobrante').set(authHeader(token)).send({ tipoBolsa: 'especial', bolsas: 2 })
+    expect(excede.status).toBe(400)
+
+    const ok = await request(app).post('/api/inventario/gourmet/empacar-sobrante').set(authHeader(token)).send({ tipoBolsa: 'especial', bolsas: 1 })
+    expect(ok.status).toBe(204)
+
+    const empacado = await request(app).get('/api/inventario/gourmet/empacado').set(authHeader(token))
+    expect(empacado.body.comercial).toBe(2)
+    expect(empacado.body.especial).toBe(1)
+    // ~50 g; las libras se guardan con 2 decimales, así que puede variar ±3 g.
+    expect(Math.abs(empacado.body.sueltoGramos - 50)).toBeLessThan(3)
+
+    const empaque = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
+    expect(empaque.body.find((s: any) => s.tipo === 'especial').cantidad).toBe(2)
+
+    const stock = await request(app).get('/api/inventario/stock').set(authHeader(token))
+    expect(stock.body.find((s: any) => s.material === 'gourmet').cantidadLb).toBeCloseTo(totalLb, 2)
   })
 
   it('envía bolsas de blend por unidad completa, no por libras sueltas', async () => {
@@ -119,5 +155,49 @@ describe('salidas de producto terminado / grano reservado', () => {
     const stock = await request(app).get('/api/inventario/stock').set(authHeader(token))
     const restante = stock.body.find((s: any) => s.material === 'blend_bolsas').cantidadLb
     expect(restante).toBeCloseTo((6 * 350) / 453.59237, 2)
+  })
+})
+
+describe('inventario de empaque (bolsas)', () => {
+  it('devuelve los 8 tipos en 0 aunque no haya filas todavía', async () => {
+    const res = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveLength(8)
+    expect(res.body.every((s: any) => s.cantidad === 0)).toBe(true)
+  })
+
+  it('entrada suma al stock y registra el movimiento', async () => {
+    const res = await request(app).post('/api/inventario/empaque/transparente/entrada').set(authHeader(token)).send({ cantidad: 100, motivo: 'Compra a proveedor' })
+    expect(res.status).toBe(204)
+
+    const stock = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
+    expect(stock.body.find((s: any) => s.tipo === 'transparente').cantidad).toBe(100)
+
+    const movimientos = await request(app).get('/api/inventario/empaque/movimientos').set(authHeader(token)).query({ tipo: 'transparente' })
+    expect(movimientos.body).toHaveLength(1)
+    expect(movimientos.body[0].tipo).toBe('entrada')
+  })
+
+  it('rechaza un tipo de empaque inválido', async () => {
+    const res = await request(app).post('/api/inventario/empaque/no-existe/entrada').set(authHeader(token)).send({ cantidad: 10 })
+    expect(res.status).toBe(400)
+  })
+
+  it('salida rechaza restar más de lo disponible', async () => {
+    await request(app).post('/api/inventario/empaque/comercial/entrada').set(authHeader(token)).send({ cantidad: 5 })
+    const res = await request(app).post('/api/inventario/empaque/comercial/salida').set(authHeader(token)).send({ cantidad: 10 })
+    expect(res.status).toBe(400)
+  })
+
+  it('umbral dispara/quita la alerta según corresponda', async () => {
+    const tipo = encodeURIComponent('kraft con válvula')
+    await request(app).patch(`/api/inventario/empaque/${tipo}/umbral`).set(authHeader(token)).send({ minimo: 10 })
+
+    const conAlerta = await request(app).get('/api/inventario/empaque/alertas').set(authHeader(token))
+    expect(conAlerta.body.some((a: any) => a.tipo === 'kraft con válvula')).toBe(true)
+
+    await request(app).post(`/api/inventario/empaque/${tipo}/entrada`).set(authHeader(token)).send({ cantidad: 50 })
+    const sinAlerta = await request(app).get('/api/inventario/empaque/alertas').set(authHeader(token))
+    expect(sinAlerta.body.some((a: any) => a.tipo === 'kraft con válvula')).toBe(false)
   })
 })

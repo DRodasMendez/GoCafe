@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, Coffee, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { MAX_ROAST_LB, packagingFromLb, todayISODate } from '../utils/production'
+import { BAG_GRAMS, MAX_ROAST_LB, packagingFromLb, todayISODate } from '../utils/production'
 import { GOURMET_STEPS, ROAST_TYPES, ROAST_TYPE_LABELS, gourmetMermaLb, roastedAllocatedLb, type GourmetStep, type RoastBatch, type RoastType } from '../types/production'
 import {
   finalizeGourmetProduction,
@@ -52,8 +52,10 @@ function GourmetForm({ id }: { id?: string }) {
   const [pesoTuesteResult, setPesoTuesteResult] = useState(() => existing?.pesoTuesteResultLb ? String(existing.pesoTuesteResultLb) : '')
   const [reservaCafeteria, setReservaCafeteria] = useState(() => existing?.reservaCafeteriaLb ? String(existing.reservaCafeteriaLb) : '0')
   const [molidoWeight, setMolidoWeight] = useState(() => existing?.molidoWeightLb ? String(existing.molidoWeightLb) : '')
-  const [empaqueComercial, setEmpaqueComercial] = useState(() => existing?.empaqueComercialLb ? String(existing.empaqueComercialLb) : '')
-  const [empaqueEspecial, setEmpaqueEspecial] = useState(() => existing?.empaqueEspecialLb ? String(existing.empaqueEspecialLb) : '')
+  const [actualFullBags, setActualFullBags] = useState<number | ''>(() => existing?.actualFullBags ?? '')
+  const [actualRemainderGrams, setActualRemainderGrams] = useState<number | ''>(() => existing?.actualRemainderGrams ?? '')
+  const [comercialBagsStr, setComercialBagsStr] = useState<number | ''>(() => existing?.comercialBags ?? '')
+  const [especialBagsStr, setEspecialBagsStr] = useState<number | ''>(() => existing?.especialBags ?? '')
 
   const pergaminoAvailable = getRawMaterialStock('pergamino')
   const pergaminoUsed = Number(pergaminoUsedStr) || 0
@@ -63,10 +65,14 @@ function GourmetForm({ id }: { id?: string }) {
   const reservaLb = Number(reservaCafeteria) || 0
   const restanteParaMolido = Math.max(pesoTuesteResultLb - reservaLb, 0)
   const molidoLb = Number(molidoWeight) || 0
-  const comercialLb = Number(empaqueComercial) || 0
-  const especialLb = Number(empaqueEspecial) || 0
-  const comercialPackaging = useMemo(() => packagingFromLb(comercialLb), [comercialLb])
-  const especialPackaging = useMemo(() => packagingFromLb(especialLb), [especialLb])
+  const suggestedPackaging = useMemo(() => packagingFromLb(molidoLb), [molidoLb])
+  const effectiveFullBags = actualFullBags === '' ? suggestedPackaging.fullBags : actualFullBags
+  const effectiveRemainder = actualRemainderGrams === '' ? suggestedPackaging.remainderGrams : actualRemainderGrams
+  const effectiveComercialBags = comercialBagsStr === '' ? 0 : comercialBagsStr
+  const effectiveEspecialBags = especialBagsStr === '' ? 0 : especialBagsStr
+  const allocatedBags = effectiveComercialBags + effectiveEspecialBags
+  const bagsPending = Math.max(effectiveFullBags - allocatedBags, 0)
+  const hasPackageOverAllocation = allocatedBags > effectiveFullBags
   const merma = gourmetMermaLb({ pergaminoUsedLb: pergaminoUsed, trilladoWeightLb: trilladoLb, roasts: roasts.map(toRoast), pesoTuesteResultLb, reservaCafeteriaLb: reservaLb, molidoWeightLb: molidoLb })
 
   const roastValidation = useMemo(() => {
@@ -105,8 +111,10 @@ function GourmetForm({ id }: { id?: string }) {
     pesoTuesteResultLb,
     reservaCafeteriaLb: reservaLb,
     molidoWeightLb: molidoLb,
-    empaqueComercialLb: comercialLb,
-    empaqueEspecialLb: especialLb,
+    actualFullBags: effectiveFullBags,
+    actualRemainderGrams: effectiveRemainder,
+    comercialBags: effectiveComercialBags,
+    especialBags: effectiveEspecialBags,
     notas: '',
     currentStepName: GOURMET_STEPS[step],
   })
@@ -166,8 +174,10 @@ function GourmetForm({ id }: { id?: string }) {
       if (molidoLb > restanteParaMolido) { setPageError(`No puede superar las ${restanteParaMolido.toFixed(2)} lb disponibles tras la reserva.`); return false }
     }
     if (current === 'Empaque') {
-      if (comercialLb < 0 || especialLb < 0) { setPageError('Las libras de empaque no pueden ser negativas.'); return false }
-      if (Math.abs(comercialLb + especialLb - molidoLb) > 0.01) { setPageError(`Comercial + Especial debe sumar exactamente ${molidoLb.toFixed(2)} lb (llevas ${(comercialLb + especialLb).toFixed(2)} lb).`); return false }
+      if (effectiveFullBags < 0 || effectiveRemainder < 0) { setPageError('Las bolsas y el sobrante no pueden ser negativos.'); return false }
+      if (effectiveRemainder >= BAG_GRAMS) { setPageError(`El sobrante debe ser menor a ${BAG_GRAMS} g; si llega a ${BAG_GRAMS} g cuenta como una bolsa completa.`); return false }
+      if (hasPackageOverAllocation) { setPageError(`Has distribuido ${allocatedBags} bolsas, pero el resultado real tiene ${effectiveFullBags} bolsas completas.`); return false }
+      if (bagsPending > 0) { setPageError(`Todavía faltan ${bagsPending} bolsas completas por asignar a Comercial o Especial.`); return false }
     }
     return true
   }
@@ -370,25 +380,38 @@ function GourmetForm({ id }: { id?: string }) {
       )}
 
       {GOURMET_STEPS[step] === 'Empaque' && (
-        <section className="card p-6">
-          <SectionTitle title="6. Empaque" subtitle="Distribuye el peso a empacar a Comercial o Especial. El sistema te dara un total de cuantas bolsas sale y la merma restante." />
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Comercial (lb)"><input type="number" min="0" step="0.01" className="input" value={empaqueComercial} onChange={e => { setPageError(''); setEmpaqueComercial(e.target.value) }} /></Field>
-            <Field label="Especial (lb)"><input type="number" min="0" step="0.01" className="input" value={empaqueEspecial} onChange={e => { setPageError(''); setEmpaqueEspecial(e.target.value) }} /></Field>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <Stat label="Peso a empacar" value={`${molidoLb.toFixed(2)} lb`} />
-            <Stat label={Math.abs(comercialLb + especialLb - molidoLb) > 0.01 ? 'Diferencia' : 'Distribuido'} value={`${(comercialLb + especialLb).toFixed(2)} lb`} />
-          </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl bg-stone-100 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bolsas de 350 g — Comercial</p>
-              <p className="mt-1 text-xl font-black text-stone-900">{comercialPackaging.fullBags} bolsas{comercialPackaging.remainderGrams > 0 ? ` + ${comercialPackaging.remainderGrams.toFixed(1)} g` : ''}</p>
+        <section className="space-y-4">
+          <div className="card p-6">
+            <SectionTitle title="6. Empaque" subtitle="Resultado del sistema a partir del peso molido." />
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <Stat label="Peso convertido" value={`${suggestedPackaging.grams.toFixed(1)} g`} />
+              <Stat label="Sugerencia automática" value={`${suggestedPackaging.fullBags} bolsas`} />
+              <Stat label="Sobrante sugerido" value={`${suggestedPackaging.remainderGrams.toFixed(1)} g`} />
             </div>
-            <div className="rounded-2xl bg-stone-100 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bolsas de 350 g — Especial</p>
-              <p className="mt-1 text-xl font-black text-stone-900">{especialPackaging.fullBags} bolsas{especialPackaging.remainderGrams > 0 ? ` + ${especialPackaging.remainderGrams.toFixed(1)} g` : ''}</p>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <h4 className="font-black text-stone-900">Resultado real del empaque</h4>
+              <p className="mt-1 text-sm text-stone-600">Puedes corregir estos valores si el resultado físico fue diferente al cálculo sugerido.</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <Field label="Bolsas completas (350 g)"><input type="number" min="0" step="1" className="input" placeholder={String(suggestedPackaging.fullBags)} value={actualFullBags} onChange={e => { setPageError(''); setActualFullBags(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>
+                <Field label="Sobrante (g)"><input type="number" min="0" max="349.99" step="0.1" className={`input ${effectiveRemainder >= BAG_GRAMS ? '!border-red-400 !bg-red-50' : ''}`} placeholder={suggestedPackaging.remainderGrams.toFixed(1)} value={actualRemainderGrams} onChange={e => { setPageError(''); setActualRemainderGrams(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0)) }} /></Field>
+              </div>
+              <p className="mt-3 text-sm text-stone-700"><b>Resultado registrado:</b> {effectiveFullBags} bolsas completas{effectiveRemainder > 0 ? ` + sobrante de ${effectiveRemainder.toFixed(1)} g` : ''}.</p>
             </div>
+          </div>
+
+          <div className="card p-6">
+            <SectionTitle title="Distribución por tipo de bolsa" subtitle="Comercial y Especial no son productos distintos — es el mismo café Gourmet; distribuye las bolsas completas entre los dos tipos de empaque." />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Bolsas Comercial"><input type="number" min="0" step="1" className="input" value={comercialBagsStr} placeholder="0" onChange={e => { setPageError(''); setComercialBagsStr(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>
+              <Field label="Bolsas Especial"><input type="number" min="0" step="1" className="input" value={especialBagsStr} placeholder="0" onChange={e => { setPageError(''); setEspecialBagsStr(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <Stat label="Bolsas completas" value={`${effectiveFullBags}`} />
+              <Stat label="Distribuidas" value={`${allocatedBags}`} />
+              <Stat label={hasPackageOverAllocation ? 'Exceso' : 'Pendientes'} value={`${hasPackageOverAllocation ? allocatedBags - effectiveFullBags : bagsPending}`} />
+            </div>
+            {hasPackageOverAllocation && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">La distribución supera las {effectiveFullBags} bolsas completas registradas.</p>}
+            {!hasPackageOverAllocation && bagsPending === 0 && effectiveFullBags > 0 && <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">✓ Todas las bolsas completas fueron asignadas a Comercial o Especial.</p>}
           </div>
         </section>
       )}
@@ -403,8 +426,9 @@ function GourmetForm({ id }: { id?: string }) {
             <Stat label="Peso después del tueste" value={`${pesoTuesteResultLb.toFixed(2)} lb`} />
             <Stat label="Reserva cafetería" value={`${reservaLb.toFixed(2)} lb`} />
             <Stat label="Después de molido" value={`${molidoLb.toFixed(2)} lb`} />
-            <Stat label="Comercial" value={`${comercialLb.toFixed(2)} lb`} />
-            <Stat label="Especial" value={`${especialLb.toFixed(2)} lb`} />
+            <Stat label="Bolsas completas" value={`${effectiveFullBags}`} />
+            <Stat label="Comercial" value={`${effectiveComercialBags} bolsas`} />
+            <Stat label="Especial" value={`${effectiveEspecialBags} bolsas`} />
             <Stat label="Fecha" value={fecha} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

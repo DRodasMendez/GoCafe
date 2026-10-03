@@ -52,7 +52,7 @@ function buildPackagingRows(order: Order): [string, string][] {
     if (qty <= 0 && !isIncompleteHere) continue
 
     const parts: string[] = []
-    if (qty > 0) parts.push(`${qty} bolsa${qty === 1 ? '' : 's'} (350 g c/u)`)
+    if (qty > 0) parts.push(`${qty} bolsa${qty === 1 ? '' : 's'} (${order.bagSizeGrams} g c/u)`)
     if (isIncompleteHere) parts.push(`1 bolsa (${order.actualRemainderGrams.toFixed(1)} g)`)
 
     rows.push([`Empaque: ${capitalize(type)}`, parts.join(' + ')])

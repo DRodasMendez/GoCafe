@@ -50,6 +50,7 @@ enum MovementKind {
 enum ReferenciaTipo {
   produccion_gourmet
   produccion_blend
+  orden
   manual
 }
 
@@ -94,6 +95,8 @@ model Orden {
   totalPrice Decimal @default(0) @map("total_price") @db.Decimal(10, 2)
   pagado     Boolean @default(false)
 
+  /** Gramaje de bolsa de ESTA orden (el cliente puede pedir un gramaje distinto al estándar de 350 g). Se usa para calcular bolsas completas/sobrante en el paso de Empaque. */
+  bagSizeGrams         Decimal @default(350) @map("bag_size_grams") @db.Decimal(10, 2)
   actualFullBags       Int     @default(0) @map("actual_full_bags")
   actualRemainderGrams Decimal @default(0) @map("actual_remainder_grams") @db.Decimal(10, 2)
 
@@ -160,8 +163,12 @@ model ProduccionGourmet {
   pesoTuesteResultLb Decimal   @default(0) @map("peso_tueste_result_lb") @db.Decimal(10, 2)
   reservaCafeteriaLb Decimal   @default(0) @map("reserva_cafeteria_lb") @db.Decimal(10, 2)
   molidoWeightLb     Decimal   @default(0) @map("molido_weight_lb") @db.Decimal(10, 2)
-  empaqueComercialLb Decimal   @default(0) @map("empaque_comercial_lb") @db.Decimal(10, 2)
-  empaqueEspecialLb  Decimal   @default(0) @map("empaque_especial_lb") @db.Decimal(10, 2)
+  /** Comercial y Especial no son productos distintos — es el mismo café Gourmet, la diferencia es solo la bolsa en la que se empaca (ver comercialBags/especialBags). */
+  actualFullBags       Int     @default(0) @map("actual_full_bags")
+  actualRemainderGrams Decimal @default(0) @map("actual_remainder_grams") @db.Decimal(10, 2)
+  /** Reparto de actualFullBags entre los dos tipos de bolsa física (inventario de empaque): comercialBags + especialBags debe sumar actualFullBags. */
+  comercialBags Int @default(0) @map("comercial_bags")
+  especialBags  Int @default(0) @map("especial_bags")
 
   notas String @default("")
 
@@ -208,6 +215,8 @@ model ProduccionBlend {
   molidoMezclaWeightLb  Decimal     @default(0) @map("molido_mezcla_weight_lb") @db.Decimal(10, 2)
   actualFullBags        Int         @default(0) @map("actual_full_bags")
   actualRemainderGrams  Decimal     @default(0) @map("actual_remainder_grams") @db.Decimal(10, 2)
+  /** Tipo de bolsa física (inventario de empaque) usada para las actualFullBags de este lote: "comercial" o "especial". */
+  bagType String @default("comercial") @map("bag_type")
 
   notas String @default("")
 
@@ -262,6 +271,52 @@ model InventarioMovimiento {
 
   @@index([material, fecha])
   @@map("inventario_movimientos")
+}
+
+/**
+ * Bolsas de Gourmet YA LLENAS en bodega, por tipo de bolsa. El café se embolsa durante la
+ * producción, así que el conteo real son estas bolsas — no las libras ÷ 350 g. El stock en libras
+ * de "gourmet" (InventarioStock) sigue siendo el total; lo que no está en bolsas es café suelto.
+ */
+model InventarioGourmetEmpacado {
+  tipoBolsa String   @id @map("tipo_bolsa")
+  bolsas    Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("inventario_gourmet_empacado")
+}
+
+// ---------------------------------------------------------------------------
+// Inventario de empaque (bolsas físicas) — unidades, no libras. Dos familias de "tipo"
+// comparten esta misma tabla (igual que InventarioStock mezcla materia prima y producto
+// terminado): los 6 empaques de Clientes (transparente, laminada, ...) y los 2 de
+// Producción propia ("comercial" / "especial"). Agregar un tipo nuevo no requiere migración.
+// ---------------------------------------------------------------------------
+
+model InventarioEmpaqueStock {
+  tipo      String   @id
+  cantidad  Int      @default(0)
+  /** Umbral mínimo de unidades para disparar alerta de "hay que comprar". Null = sin alerta configurada. */
+  minimo    Int?
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("inventario_empaque_stock")
+}
+
+/** Kardex de bolsas: mismo principio de solo-inserción que InventarioMovimiento, en unidades. */
+model InventarioEmpaqueMovimiento {
+  id              String          @id @default(uuid())
+  fecha           DateTime        @default(now())
+  tipoEmpaque     String          @map("tipo_empaque")
+  tipo            MovementKind
+  cantidad        Int
+  motivo          String
+  referenciaTipo  ReferenciaTipo? @map("referencia_tipo")
+  referenciaId    String?         @map("referencia_id")
+  saldoResultante Int             @map("saldo_resultante")
+
+  @@index([tipoEmpaque, fecha])
+  @@map("inventario_empaque_movimientos")
 }
 
 // ---------------------------------------------------------------------------

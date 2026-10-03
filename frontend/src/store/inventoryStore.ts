@@ -3,11 +3,10 @@ import { BAG_GRAMS, LB_TO_GRAMS } from '../utils/production'
 import type { RawMaterialType, RoastType } from '../types/production'
 import { apiFetch } from '../api/client'
 
-export type FinishedGourmetType = 'gourmetComercial' | 'gourmetEspecial'
 export type StockMaterial =
   | RawMaterialType
   | 'granoCafeteria_claro' | 'granoCafeteria_medio' | 'granoCafeteria_oscuro'
-  | FinishedGourmetType
+  | 'gourmet'
   | 'blendBolsas'
 
 export const STOCK_LABELS: Record<StockMaterial, string> = {
@@ -17,8 +16,8 @@ export const STOCK_LABELS: Record<StockMaterial, string> = {
   granoCafeteria_claro: 'Café en grano — Tueste Claro',
   granoCafeteria_medio: 'Café en grano — Tueste Medio',
   granoCafeteria_oscuro: 'Café en grano — Tueste Oscuro',
-  gourmetComercial: 'Gourmet Comercial',
-  gourmetEspecial: 'Gourmet Especial',
+  // Comercial y Especial no son productos distintos — es el mismo café, la diferencia es solo la bolsa (ver inventario de empaque).
+  gourmet: 'Gourmet (terminado)',
   blendBolsas: 'Blend (bolsas de 350 g)',
 }
 
@@ -32,8 +31,7 @@ const BACKEND_TO_FRONTEND_MATERIAL: Record<string, StockMaterial> = {
   grano_claro: 'granoCafeteria_claro',
   grano_medio: 'granoCafeteria_medio',
   grano_oscuro: 'granoCafeteria_oscuro',
-  gourmet_comercial: 'gourmetComercial',
-  gourmet_especial: 'gourmetEspecial',
+  gourmet: 'gourmet',
   blend_bolsas: 'blendBolsas',
 }
 
@@ -42,8 +40,7 @@ interface Stock {
   oro: number
   natural: number
   granoCafeteria: Record<RoastType, number>
-  gourmetComercialLb: number
-  gourmetEspecialLb: number
+  gourmetLb: number
   blendFinishedLb: number
 }
 
@@ -73,7 +70,7 @@ export interface InventoryMovement {
 
 function emptyState(): InventoryState {
   return {
-    stock: { pergamino: 0, oro: 0, natural: 0, granoCafeteria: { claro: 0, medio: 0, oscuro: 0 }, gourmetComercialLb: 0, gourmetEspecialLb: 0, blendFinishedLb: 0 },
+    stock: { pergamino: 0, oro: 0, natural: 0, granoCafeteria: { claro: 0, medio: 0, oscuro: 0 }, gourmetLb: 0, blendFinishedLb: 0 },
     thresholds: { pergamino: 25, oro: 25, natural: 25 },
   }
 }
@@ -107,8 +104,7 @@ function buildState(rows: StockDto[]): InventoryState {
       case 'grano_claro': s.stock.granoCafeteria.claro = cantidad; break
       case 'grano_medio': s.stock.granoCafeteria.medio = cantidad; break
       case 'grano_oscuro': s.stock.granoCafeteria.oscuro = cantidad; break
-      case 'gourmet_comercial': s.stock.gourmetComercialLb = cantidad; break
-      case 'gourmet_especial': s.stock.gourmetEspecialLb = cantidad; break
+      case 'gourmet': s.stock.gourmetLb = cantidad; break
       case 'blend_bolsas': s.stock.blendFinishedLb = cantidad; break
     }
   }
@@ -128,11 +124,61 @@ function fromMovementDto(m: MovimientoDto): InventoryMovement {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Empaque (bolsas físicas): 6 tipos de Clientes + "comercial"/"especial" de Producción propia.
+// Unidades, no libras — por eso vive separado del Stock/InventoryMovement de arriba.
+// ---------------------------------------------------------------------------
+
+export interface EmpaqueStockItem {
+  tipo: string
+  label: string
+  cantidad: number
+  minimo: number | null
+}
+
+export interface EmpaqueMovement {
+  id: string
+  fecha: string
+  tipoEmpaque: string
+  tipo: MovementKind
+  cantidad: number
+  motivo: string
+  referenciaId?: string
+  saldoResultante: number
+}
+
+interface EmpaqueMovimientoDto {
+  id: string
+  fecha: string
+  tipoEmpaque: string
+  tipo: MovementKind
+  cantidad: number
+  motivo: string
+  referenciaId: string | null
+  saldoResultante: number
+}
+
+function fromEmpaqueMovementDto(m: EmpaqueMovimientoDto): EmpaqueMovement {
+  return {
+    id: m.id,
+    fecha: m.fecha,
+    tipoEmpaque: m.tipoEmpaque,
+    tipo: m.tipo,
+    cantidad: m.cantidad,
+    motivo: m.motivo,
+    referenciaId: m.referenciaId ?? undefined,
+    saldoResultante: m.saldoResultante,
+  }
+}
+
 type Listener = () => void
 const listeners = new Set<Listener>()
 
 let state: InventoryState = emptyState()
 let movements: InventoryMovement[] = []
+let empaqueStock: EmpaqueStockItem[] = []
+let empaqueMovements: EmpaqueMovement[] = []
+let gourmetEmpacado: GourmetEmpacado = { comercial: 0, especial: 0, sueltoGramos: 0 }
 let loaded = false
 let loadingPromise: Promise<void> | null = null
 
@@ -141,12 +187,18 @@ function notify() {
 }
 
 async function refresh(): Promise<void> {
-  const [stockRows, movRows] = await Promise.all([
+  const [stockRows, movRows, empaqueStockRows, empaqueMovRows, empacadoRow] = await Promise.all([
     apiFetch<StockDto[]>('/api/inventario/stock'),
     apiFetch<MovimientoDto[]>('/api/inventario/movimientos'),
+    apiFetch<EmpaqueStockItem[]>('/api/inventario/empaque/stock'),
+    apiFetch<EmpaqueMovimientoDto[]>('/api/inventario/empaque/movimientos'),
+    apiFetch<GourmetEmpacado>('/api/inventario/gourmet/empacado'),
   ])
   state = buildState(stockRows)
   movements = movRows.map(fromMovementDto)
+  empaqueStock = empaqueStockRows
+  empaqueMovements = empaqueMovRows.map(fromEmpaqueMovementDto)
+  gourmetEmpacado = empacadoRow
   notify()
 }
 
@@ -205,6 +257,24 @@ export function useMovements(): InventoryMovement[] {
   return useSyncExternalStore(subscribe, getMovementsSnapshot)
 }
 
+export function getEmpaqueStockSnapshot() {
+  return empaqueStock
+}
+
+export function getEmpaqueMovementsSnapshot() {
+  return empaqueMovements
+}
+
+export function useEmpaqueStock(): EmpaqueStockItem[] {
+  useEffect(() => { ensureInventoryLoaded().catch(() => {}) }, [])
+  return useSyncExternalStore(subscribe, getEmpaqueStockSnapshot)
+}
+
+export function useEmpaqueMovements(): EmpaqueMovement[] {
+  useEffect(() => { ensureInventoryLoaded().catch(() => {}) }, [])
+  return useSyncExternalStore(subscribe, getEmpaqueMovementsSnapshot)
+}
+
 export function getRawMaterialStock(material: RawMaterialType): number {
   return state.stock[material]
 }
@@ -239,12 +309,35 @@ export async function descontarGranoCafeteria(tipo: RoastType, cantidadLb: numbe
 }
 
 // ---------------------------------------------------------------------------
-// Producto terminado: Gourmet (Comercial / Especial)
+// Producto terminado: Gourmet. Un solo café, embolsado durante la producción en bolsas Comercial
+// o Especial: se cuentan las bolsas llenas por tipo, y lo que no se embolsó es café suelto.
 // ---------------------------------------------------------------------------
 
-export async function descontarGourmetTerminado(tipo: FinishedGourmetType, cantidadLb: number, motivo: string): Promise<void> {
-  const backendTipo = tipo === 'gourmetComercial' ? 'comercial' : 'especial'
-  await apiFetch<void>(`/api/inventario/gourmet/${backendTipo}/salida`, { method: 'POST', body: { cantidadLb, motivo } })
+export type GourmetBagType = 'comercial' | 'especial'
+
+export interface GourmetEmpacado {
+  comercial: number
+  especial: number
+  sueltoGramos: number
+}
+
+export function getGourmetEmpacadoSnapshot() {
+  return gourmetEmpacado
+}
+
+export function useGourmetEmpacado(): GourmetEmpacado {
+  useEffect(() => { ensureInventoryLoaded().catch(() => {}) }, [])
+  return useSyncExternalStore(subscribe, getGourmetEmpacadoSnapshot)
+}
+
+export async function descontarGourmetTerminado(tipoBolsa: GourmetBagType, bolsas: number, motivo: string): Promise<void> {
+  await apiFetch<void>(`/api/inventario/gourmet/salida`, { method: 'POST', body: { tipoBolsa, bolsas, motivo } })
+  await refresh()
+}
+
+/** Cuando en bodega juntan el café suelto de varios lotes y llenan bolsas. */
+export async function empacarSobranteGourmet(tipoBolsa: GourmetBagType, bolsas: number, motivo: string): Promise<void> {
+  await apiFetch<void>(`/api/inventario/gourmet/empacar-sobrante`, { method: 'POST', body: { tipoBolsa, bolsas, motivo } })
   await refresh()
 }
 
@@ -293,4 +386,44 @@ export function bagsEquivalent(lb: number) {
   const fullBags = Math.floor(grams / BAG_GRAMS)
   const remainderGrams = grams - fullBags * BAG_GRAMS
   return { fullBags, remainderGrams }
+}
+
+// ---------------------------------------------------------------------------
+// Empaque (bolsas físicas): entradas/salidas manuales (compras y correcciones) y umbrales
+// ---------------------------------------------------------------------------
+
+export async function registrarEntradaEmpaque(tipo: string, cantidad: number, motivo: string): Promise<void> {
+  await apiFetch<void>(`/api/inventario/empaque/${encodeURIComponent(tipo)}/entrada`, { method: 'POST', body: { cantidad, motivo } })
+  await refresh()
+}
+
+/** Corrección manual (ej. se capturó de más). Queda como un único movimiento de salida — nunca se reescribe la entrada original. */
+export async function registrarSalidaEmpaque(tipo: string, cantidad: number, motivo: string): Promise<void> {
+  await apiFetch<void>(`/api/inventario/empaque/${encodeURIComponent(tipo)}/salida`, { method: 'POST', body: { cantidad, motivo } })
+  await refresh()
+}
+
+export async function updateEmpaqueUmbral(tipo: string, minimo: number): Promise<void> {
+  await apiFetch<void>(`/api/inventario/empaque/${encodeURIComponent(tipo)}/umbral`, { method: 'PATCH', body: { minimo: Math.max(0, Math.floor(minimo)) } })
+  await refresh()
+}
+
+export interface EmpaqueAlert {
+  tipo: string
+  title: string
+  message: string
+}
+
+export function getEmpaqueAlerts(): EmpaqueAlert[] {
+  const alerts: EmpaqueAlert[] = []
+  for (const item of empaqueStock) {
+    if (item.minimo != null && item.cantidad < item.minimo) {
+      alerts.push({
+        tipo: item.tipo,
+        title: `Pocas bolsas de ${item.label}`,
+        message: `Quedan ${item.cantidad} unidades, por debajo del mínimo de ${item.minimo}.`,
+      })
+    }
+  }
+  return alerts
 }

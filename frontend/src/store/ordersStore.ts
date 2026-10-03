@@ -47,6 +47,7 @@ interface OrdenDto {
   grindType: string
   totalPrice: string
   pagado: boolean
+  bagSizeGrams: string
   actualFullBags: number
   actualRemainderGrams: string
   packageAllocation: Partial<PackageAllocation>
@@ -115,6 +116,7 @@ function fromDto(dto: OrdenDto): Order {
     grindType: dto.grindType,
     totalPrice: Number(dto.totalPrice),
     pagado: dto.pagado,
+    bagSizeGrams: Number(dto.bagSizeGrams),
     actualFullBags: dto.actualFullBags,
     actualRemainderGrams: Number(dto.actualRemainderGrams),
     packageAllocation: { ...emptyAllocation(), ...dto.packageAllocation },
@@ -226,6 +228,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
       roastType: input.roastType,
       grindType: input.grindType,
       totalPrice: input.totalPrice,
+      bagSizeGrams: input.bagSizeGrams,
       actualFullBags: input.actualFullBags,
       actualRemainderGrams: input.actualRemainderGrams,
       packageAllocation: input.packageAllocation,
@@ -253,6 +256,7 @@ export async function updateOrder(id: string, patch: Partial<Order>): Promise<Or
   if (patch.roastType !== undefined) body.roastType = patch.roastType
   if (patch.grindType !== undefined) body.grindType = patch.grindType
   if (patch.totalPrice !== undefined) body.totalPrice = patch.totalPrice
+  if (patch.bagSizeGrams !== undefined) body.bagSizeGrams = patch.bagSizeGrams
   if (patch.actualFullBags !== undefined) body.actualFullBags = patch.actualFullBags
   if (patch.actualRemainderGrams !== undefined) body.actualRemainderGrams = patch.actualRemainderGrams
   if (patch.packageAllocation !== undefined) body.packageAllocation = patch.packageAllocation

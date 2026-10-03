@@ -19,6 +19,10 @@ async function setStock(material: string, cantidadLb: number) {
   })
 }
 
+async function setEmpaqueStock(tipo: string, cantidad: number) {
+  await prisma.inventarioEmpaqueStock.upsert({ where: { tipo }, create: { tipo, cantidad }, update: { cantidad } })
+}
+
 describe('POST /api/produccion/gourmet', () => {
   it('rechaza pergaminoUsedLb <= 0', async () => {
     const res = await request(app).post('/api/produccion/gourmet').set(authHeader(token)).send({ fecha: '2026-01-01', pergaminoUsedLb: 0, notas: '' })
@@ -58,10 +62,11 @@ describe('POST /api/produccion/gourmet/:id/finalizar', () => {
 
   it('descuenta el pergamino y agrega la reserva de cafetería + empaque terminado, todo junto', async () => {
     const id = await startLote(50)
+    await setEmpaqueStock('comercial', 10)
     await request(app)
       .patch(`/api/produccion/gourmet/${id}`)
       .set(authHeader(token))
-      .send({ roastType: 'medio', reservaCafeteriaLb: 5, empaqueComercialLb: 20, empaqueEspecialLb: 10 })
+      .send({ roastType: 'medio', reservaCafeteriaLb: 5, actualFullBags: 10, actualRemainderGrams: 0, comercialBags: 10 })
 
     const res = await request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token))
     expect(res.status).toBe(200)
@@ -72,12 +77,68 @@ describe('POST /api/produccion/gourmet/:id/finalizar', () => {
     const byMaterial = Object.fromEntries(stock.body.map((s: any) => [s.material, s.cantidadLb]))
     expect(byMaterial.pergamino).toBe(50) // 100 - 50 usado
     expect(byMaterial.grano_medio).toBe(5) // reserva de cafetería
-    expect(byMaterial.gourmet_comercial).toBe(20)
-    expect(byMaterial.gourmet_especial).toBe(10)
+    // Comercial y Especial no son productos distintos — es un solo stock "gourmet".
+    expect(byMaterial.gourmet).toBeCloseTo((10 * 350) / 453.59237, 2)
 
     const movimientos = await request(app).get('/api/inventario/movimientos').set(authHeader(token))
     const referenciaIds = movimientos.body.map((m: any) => m.referenciaId)
-    expect(referenciaIds.filter((id: string) => id === 'GG-0001')).toHaveLength(4) // salida pergamino + entrada reserva + comercial + especial
+    expect(referenciaIds.filter((id: string) => id === 'GG-0001')).toHaveLength(3) // salida pergamino + entrada reserva + entrada gourmet
+  })
+
+  it('descuenta bolsas comercial/especial del inventario de empaque al finalizar', async () => {
+    const id = await startLote(50)
+    await setEmpaqueStock('comercial', 20)
+    await setEmpaqueStock('especial', 5)
+    await request(app)
+      .patch(`/api/produccion/gourmet/${id}`)
+      .set(authHeader(token))
+      .send({ actualFullBags: 17, actualRemainderGrams: 0, comercialBags: 12, especialBags: 5 })
+
+    const res = await request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(200)
+
+    const empaque = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
+    const byTipo = Object.fromEntries(empaque.body.map((s: any) => [s.tipo, s.cantidad]))
+    expect(byTipo.comercial).toBe(8) // 20 - 12
+    expect(byTipo.especial).toBe(0) // 5 - 5
+
+    // Las bolsas llenas quedan contadas por tipo en el inventario de producto terminado.
+    const empacado = await request(app).get('/api/inventario/gourmet/empacado').set(authHeader(token))
+    expect(empacado.body.comercial).toBe(12)
+    expect(empacado.body.especial).toBe(5)
+    expect(empacado.body.sueltoGramos).toBeLessThan(3)
+  })
+
+  it('rechaza finalizar si Comercial + Especial no suma las bolsas completas, sin aplicar nada', async () => {
+    const id = await startLote(50)
+    await setEmpaqueStock('comercial', 20)
+    await request(app)
+      .patch(`/api/produccion/gourmet/${id}`)
+      .set(authHeader(token))
+      .send({ actualFullBags: 10, actualRemainderGrams: 0, comercialBags: 7 })
+
+    const res = await request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(400)
+    const lote = await request(app).get(`/api/produccion/gourmet/${id}`).set(authHeader(token))
+    expect(lote.body.status).toBe('en_proceso')
+  })
+
+  it('falla al finalizar si no hay suficientes bolsas de empaque, sin aplicar nada', async () => {
+    const id = await startLote(50)
+    await setEmpaqueStock('comercial', 3)
+    await request(app)
+      .patch(`/api/produccion/gourmet/${id}`)
+      .set(authHeader(token))
+      .send({ actualFullBags: 12, actualRemainderGrams: 0, comercialBags: 12 })
+
+    const res = await request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(400)
+
+    const stock = await request(app).get('/api/inventario/stock').set(authHeader(token))
+    expect(stock.body.find((s: any) => s.material === 'pergamino').cantidadLb).toBe(100) // no se movió nada
+
+    const lote = await request(app).get(`/api/produccion/gourmet/${id}`).set(authHeader(token))
+    expect(lote.body.status).toBe('en_proceso')
   })
 
   it('no permite finalizar dos veces el mismo lote', async () => {

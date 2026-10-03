@@ -8,6 +8,7 @@ import {
   type BlendStep,
   type GourmetProduction,
   type GourmetStep,
+  type PackagingType,
   type Production,
   type ProductionStatus,
   type RoastBatch,
@@ -47,8 +48,10 @@ interface GourmetDto {
   pesoTuesteResultLb: string
   reservaCafeteriaLb: string
   molidoWeightLb: string
-  empaqueComercialLb: string
-  empaqueEspecialLb: string
+  actualFullBags: number
+  actualRemainderGrams: string
+  comercialBags: number
+  especialBags: number
   notas: string
   createdAt: string
   updatedAt: string
@@ -71,6 +74,7 @@ interface BlendDto {
   molidoMezclaWeightLb: string
   actualFullBags: number
   actualRemainderGrams: string
+  bagType: PackagingType
   notas: string
   createdAt: string
   updatedAt: string
@@ -93,8 +97,10 @@ function fromGourmetDto(dto: GourmetDto): GourmetProduction {
     pesoTuesteResultLb: Number(dto.pesoTuesteResultLb),
     reservaCafeteriaLb: Number(dto.reservaCafeteriaLb),
     molidoWeightLb: Number(dto.molidoWeightLb),
-    empaqueComercialLb: Number(dto.empaqueComercialLb),
-    empaqueEspecialLb: Number(dto.empaqueEspecialLb),
+    actualFullBags: dto.actualFullBags,
+    actualRemainderGrams: Number(dto.actualRemainderGrams),
+    comercialBags: dto.comercialBags,
+    especialBags: dto.especialBags,
     notas: dto.notas,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -120,6 +126,7 @@ function fromBlendDto(dto: BlendDto): BlendProduction {
     molidoMezclaWeightLb: Number(dto.molidoMezclaWeightLb),
     actualFullBags: dto.actualFullBags,
     actualRemainderGrams: Number(dto.actualRemainderGrams),
+    bagType: dto.bagType,
     notas: dto.notas,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -258,8 +265,10 @@ export async function updateGourmetProduction(id: string, patch: GourmetPatch): 
   if (patch.pesoTuesteResultLb !== undefined) body.pesoTuesteResultLb = patch.pesoTuesteResultLb
   if (patch.reservaCafeteriaLb !== undefined) body.reservaCafeteriaLb = patch.reservaCafeteriaLb
   if (patch.molidoWeightLb !== undefined) body.molidoWeightLb = patch.molidoWeightLb
-  if (patch.empaqueComercialLb !== undefined) body.empaqueComercialLb = patch.empaqueComercialLb
-  if (patch.empaqueEspecialLb !== undefined) body.empaqueEspecialLb = patch.empaqueEspecialLb
+  if (patch.actualFullBags !== undefined) body.actualFullBags = patch.actualFullBags
+  if (patch.actualRemainderGrams !== undefined) body.actualRemainderGrams = patch.actualRemainderGrams
+  if (patch.comercialBags !== undefined) body.comercialBags = patch.comercialBags
+  if (patch.especialBags !== undefined) body.especialBags = patch.especialBags
   if (patch.notas !== undefined) body.notas = patch.notas
 
   const dto = await apiFetch<GourmetDto>(`/api/produccion/gourmet/${id}`, { method: 'PATCH', body })
@@ -342,6 +351,7 @@ export async function updateBlendProduction(id: string, patch: BlendPatch): Prom
   if (patch.molidoMezclaWeightLb !== undefined) body.molidoMezclaWeightLb = patch.molidoMezclaWeightLb
   if (patch.actualFullBags !== undefined) body.actualFullBags = patch.actualFullBags
   if (patch.actualRemainderGrams !== undefined) body.actualRemainderGrams = patch.actualRemainderGrams
+  if (patch.bagType !== undefined) body.bagType = patch.bagType
   if (patch.notas !== undefined) body.notas = patch.notas
 
   const dto = await apiFetch<BlendDto>(`/api/produccion/blend/${id}`, { method: 'PATCH', body })

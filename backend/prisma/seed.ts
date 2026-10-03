@@ -2,6 +2,7 @@ import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import { PrismaClient } from '@prisma/client'
 import { ALL_MATERIALS, RAW_MATERIALS } from '../src/modules/inventario/inventario.constants'
+import { EMPAQUE_TYPES } from '../src/modules/inventario/empaque.constants'
 
 const prisma = new PrismaClient()
 
@@ -35,9 +36,22 @@ async function seedInventarioStock() {
   console.log(`Inventario inicializado (${ALL_MATERIALS.length} materiales).`)
 }
 
+/** Crea la fila de cada tipo de empaque si no existe todavía, con cantidad 0. No pisa cantidades ya cargadas. */
+async function seedInventarioEmpaque() {
+  for (const tipo of EMPAQUE_TYPES) {
+    await prisma.inventarioEmpaqueStock.upsert({
+      where: { tipo },
+      create: { tipo, cantidad: 0 },
+      update: {},
+    })
+  }
+  console.log(`Inventario de empaque inicializado (${EMPAQUE_TYPES.length} tipos de bolsa).`)
+}
+
 async function main() {
   await seedUsuario()
   await seedInventarioStock()
+  await seedInventarioEmpaque()
 }
 
 main()

@@ -3,7 +3,6 @@ import { ArrowLeft, Blend, Coffee } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useProduction, useProductionsLoaded } from '../store/productionStore'
 import { ROAST_TYPE_LABELS, blendMermaLb, gourmetMermaLb } from '../types/production'
-import { packagingFromLb } from '../utils/production'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -34,8 +33,6 @@ export default function ProduccionDetailPage() {
   if (production.status === 'en_proceso') return null
 
   const isGourmet = production.type === 'gourmet'
-  const comercialPackaging = isGourmet ? packagingFromLb(production.empaqueComercialLb) : null
-  const especialPackaging = isGourmet ? packagingFromLb(production.empaqueEspecialLb) : null
   const merma = isGourmet ? gourmetMermaLb(production) : blendMermaLb(production)
 
   return (
@@ -61,8 +58,10 @@ export default function ProduccionDetailPage() {
               <Stat label="Peso después del tueste" value={`${production.pesoTuesteResultLb.toFixed(2)} lb`} />
               <Stat label="Reserva para cafetería" value={`${production.reservaCafeteriaLb.toFixed(2)} lb`} />
               <Stat label="Después de molido" value={`${production.molidoWeightLb.toFixed(2)} lb`} />
-              <Stat label="Comercial" value={`${production.empaqueComercialLb.toFixed(2)} lb (${comercialPackaging!.fullBags} bolsas de 350 g)`} />
-              <Stat label="Especial" value={`${production.empaqueEspecialLb.toFixed(2)} lb (${especialPackaging!.fullBags} bolsas de 350 g)`} />
+              <Stat label="Bolsas completas" value={`${production.actualFullBags}`} />
+              <Stat label="Sobrante" value={`${production.actualRemainderGrams.toFixed(1)} g`} />
+              <Stat label="Comercial" value={`${production.comercialBags} bolsas`} />
+              <Stat label="Especial" value={`${production.especialBags} bolsas`} />
             </>
           ) : (
             <>

@@ -4,7 +4,9 @@ import { AppError, NotFoundError } from '../../errors'
 import { blendRequiredRawMaterial } from '../../utils/productionMath'
 import { packagedWeightLb } from '../../utils/production'
 import * as inventarioService from '../inventario/inventario.service'
+import * as empaqueService from '../inventario/empaque.service'
 import { granoMaterial } from '../inventario/inventario.constants'
+import type { ProductionPackageType } from '../inventario/empaque.constants'
 import { formatFolio } from '../../utils/folio'
 
 const ROASTS_ORDER = { orderBy: { seq: 'asc' } } as const
@@ -75,8 +77,10 @@ interface GourmetPatch {
   pesoTuesteResultLb?: number
   reservaCafeteriaLb?: number
   molidoWeightLb?: number
-  empaqueComercialLb?: number
-  empaqueEspecialLb?: number
+  actualFullBags?: number
+  actualRemainderGrams?: number
+  comercialBags?: number
+  especialBags?: number
   notas?: string
 }
 
@@ -128,7 +132,23 @@ export async function finalizeGourmetProduction(id: string) {
       )
     }
 
-    await inventarioService.agregarGourmetTerminado(tx, p.empaqueComercialLb.toNumber(), p.empaqueEspecialLb.toNumber(), code)
+    if (p.comercialBags + p.especialBags !== p.actualFullBags) {
+      throw new AppError(
+        `Las bolsas Comercial (${p.comercialBags}) + Especial (${p.especialBags}) deben sumar las ${p.actualFullBags} bolsas completas del lote.`
+      )
+    }
+    const packagedLb = packagedWeightLb(p.actualFullBags, p.actualRemainderGrams.toNumber())
+    await inventarioService.agregarGourmetTerminado(tx, packagedLb, { comercial: p.comercialBags, especial: p.especialBags }, code)
+
+    // Bolsas físicas (inventario de empaque) usadas para envasar lo anterior — independiente del peso.
+    await empaqueService.consumirEmpaque(tx, 'comercial', p.comercialBags, `Producción Gourmet ${code}`, {
+      referenciaTipo: 'produccion_gourmet',
+      referenciaId: code,
+    })
+    await empaqueService.consumirEmpaque(tx, 'especial', p.especialBags, `Producción Gourmet ${code}`, {
+      referenciaTipo: 'produccion_gourmet',
+      referenciaId: code,
+    })
 
     await tx.produccionGourmet.update({
       where: { id },
@@ -197,6 +217,7 @@ interface BlendPatch {
   molidoMezclaWeightLb?: number
   actualFullBags?: number
   actualRemainderGrams?: number
+  bagType?: ProductionPackageType
   notas?: string
 }
 
@@ -246,6 +267,12 @@ export async function finalizeBlendProduction(id: string) {
     })
     const packagedLb = packagedWeightLb(p.actualFullBags, p.actualRemainderGrams.toNumber())
     await inventarioService.agregarBlendTerminado(tx, packagedLb, code)
+
+    // Bolsas físicas (inventario de empaque) usadas para envasar las actualFullBags de este lote.
+    await empaqueService.consumirEmpaque(tx, p.bagType as ProductionPackageType, p.actualFullBags, `Producción Blend ${code}`, {
+      referenciaTipo: 'produccion_blend',
+      referenciaId: code,
+    })
 
     await tx.produccionBlend.update({
       where: { id },

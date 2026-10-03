@@ -15,6 +15,10 @@ async function setStock(material: string, cantidadLb: number) {
   await prisma.inventarioStock.upsert({ where: { material }, create: { material, cantidadLb }, update: { cantidadLb } })
 }
 
+async function setEmpaqueStock(tipo: string, cantidad: number) {
+  await prisma.inventarioEmpaqueStock.upsert({ where: { tipo }, create: { tipo, cantidad }, update: { cantidad } })
+}
+
 describe('GET /api/produccion/blend/validar-plan', () => {
   it('calcula 35% pergamino / 65% segunda y marca isValid según el stock', async () => {
     await setStock('pergamino', 100)
@@ -65,6 +69,7 @@ describe('POST /api/produccion/blend/:id/finalizar', () => {
 
   it('descuenta pergamino + segunda y agrega bolsas de blend terminado', async () => {
     const id = await startLote()
+    await setEmpaqueStock('comercial', 10)
     await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0 })
 
     const res = await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
@@ -77,6 +82,30 @@ describe('POST /api/produccion/blend/:id/finalizar', () => {
     expect(byMaterial.oro).toBeCloseTo(35, 2) // 100 - 65
     // 10 bolsas de 350g -> ~7.72 lb
     expect(byMaterial.blend_bolsas).toBeCloseTo((10 * 350) / 453.59237, 2)
+  })
+
+  it('descuenta del tipo de bolsa elegido ("especial"), no del otro', async () => {
+    const id = await startLote()
+    await setEmpaqueStock('comercial', 1) // no debe tocarse
+    await setEmpaqueStock('especial', 10)
+    await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0, bagType: 'especial' })
+
+    const res = await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(200)
+
+    const empaque = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
+    const byTipo = Object.fromEntries(empaque.body.map((s: any) => [s.tipo, s.cantidad]))
+    expect(byTipo.especial).toBe(0)
+    expect(byTipo.comercial).toBe(1)
+  })
+
+  it('falla al finalizar si no hay suficientes bolsas del tipo elegido', async () => {
+    const id = await startLote()
+    await setEmpaqueStock('comercial', 2)
+    await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ actualFullBags: 10, actualRemainderGrams: 0 })
+
+    const res = await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(400)
   })
 
   it('falla si falta pergamino o la segunda al momento de finalizar, y no aplica ningún movimiento', async () => {

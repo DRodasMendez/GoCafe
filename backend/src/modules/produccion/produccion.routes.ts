@@ -27,8 +27,10 @@ const updateGourmetSchema = z.object({
   pesoTuesteResultLb: z.number().optional(),
   reservaCafeteriaLb: z.number().optional(),
   molidoWeightLb: z.number().optional(),
-  empaqueComercialLb: z.number().optional(),
-  empaqueEspecialLb: z.number().optional(),
+  actualFullBags: z.number().int().optional(),
+  actualRemainderGrams: z.number().optional(),
+  comercialBags: z.number().int().min(0).optional(),
+  especialBags: z.number().int().min(0).optional(),
   notas: z.string().optional(),
 })
 
@@ -91,6 +93,7 @@ const updateBlendSchema = z.object({
   molidoMezclaWeightLb: z.number().optional(),
   actualFullBags: z.number().int().optional(),
   actualRemainderGrams: z.number().optional(),
+  bagType: z.enum(['comercial', 'especial']).optional(),
   notas: z.string().optional(),
 })
 

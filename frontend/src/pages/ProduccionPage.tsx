@@ -3,10 +3,10 @@ import { Blend, Boxes, Coffee, PackageCheck, Trash2, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PRODUCTION_STATUS_LABELS, roastedAllocatedLb, type Production } from '../types/production'
 import { deleteBlendProduction, deleteGourmetProduction, useAllProductions } from '../store/productionStore'
-import { packagingFromLb } from '../utils/production'
-import DatePickerField from '../components/DatePickerField'
+import { packagedWeightLb, todayISODate } from '../utils/production'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
+const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
 type Tab = 'gourmet' | 'blend'
 
@@ -14,35 +14,27 @@ export default function ProduccionPage() {
   const navigate = useNavigate()
   const all = useAllProductions()
   const [tab, setTab] = useState<Tab>('gourmet')
-  const [diaFiltro, setDiaFiltro] = useState('')
+  // "YYYY-MM"; vacío = todo el histórico. Un lote pertenece al mes de su fecha de producción.
+  const [mesFiltro, setMesFiltro] = useState(() => todayISODate().slice(0, 7))
 
-  const list = useMemo(() => all.filter(p => p.type === tab && (!diaFiltro || p.fecha === diaFiltro)), [all, tab, diaFiltro])
+  const inPeriod = (p: Production) => !mesFiltro || p.fecha.startsWith(mesFiltro)
+  const list = useMemo(() => all.filter(p => p.type === tab && inPeriod(p)), [all, tab, mesFiltro])
   const enProceso = useMemo(() => all.filter(p => p.status === 'en_proceso'), [all])
 
-  const thisMonthLb = useMemo(() => {
-    const now = new Date()
-    return all
-      .filter(p => p.status === 'terminada' && p.finalizedAt && sameMonth(new Date(p.finalizedAt), now))
-      .reduce((sum, p) => sum + finishedWeight(p), 0)
-  }, [all])
+  const periodo = useMemo(() => {
+    const terminadas = all.filter(p => p.status === 'terminada' && inPeriod(p))
+    const gourmet = terminadas.filter((p): p is Extract<Production, { type: 'gourmet' }> => p.type === 'gourmet')
+    const blend = terminadas.filter((p): p is Extract<Production, { type: 'blend' }> => p.type === 'blend')
+    return {
+      lb: terminadas.reduce((sum, p) => sum + finishedWeight(p), 0),
+      gourmetComercial: gourmet.reduce((sum, p) => sum + p.comercialBags, 0),
+      gourmetEspecial: gourmet.reduce((sum, p) => sum + p.especialBags, 0),
+      blend: blend.reduce((sum, p) => sum + p.actualFullBags, 0),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, mesFiltro])
 
-  const totalBlendBags = useMemo(() => {
-    return all
-      .filter((p): p is Extract<Production, { type: 'blend' }> => p.type === 'blend' && p.status === 'terminada')
-      .reduce((sum, p) => sum + p.actualFullBags, 0)
-  }, [all])
-
-  const totalGourmetComercialBags = useMemo(() => {
-    return all
-      .filter((p): p is Extract<Production, { type: 'gourmet' }> => p.type === 'gourmet' && p.status === 'terminada')
-      .reduce((sum, p) => sum + packagingFromLb(p.empaqueComercialLb).fullBags, 0)
-  }, [all])
-
-  const totalGourmetEspecialBags = useMemo(() => {
-    return all
-      .filter((p): p is Extract<Production, { type: 'gourmet' }> => p.type === 'gourmet' && p.status === 'terminada')
-      .reduce((sum, p) => sum + packagingFromLb(p.empaqueEspecialLb).fullBags, 0)
-  }, [all])
+  const periodoLabel = mesFiltro ? MONTH_FORMAT.format(new Date(`${mesFiltro}-01T00:00:00`)) : 'histórico'
 
   const handleDelete = async (e: React.MouseEvent, p: Production) => {
     e.stopPropagation()
@@ -77,25 +69,25 @@ export default function ProduccionPage() {
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Producido este mes</p><p className="mt-2 text-3xl font-black text-stone-900">{thisMonthLb.toFixed(1)} lb</p></div>
+            <div><p className="text-sm text-stone-500">Producido ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.lb.toFixed(1)} lb</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Coffee size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Bolsas Gourmet Comercial (total)</p><p className="mt-2 text-3xl font-black text-stone-900">{totalGourmetComercialBags}</p></div>
+            <div><p className="text-sm text-stone-500">Bolsas Gourmet Comercial ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.gourmetComercial}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Bolsas Gourmet Especial (total)</p><p className="mt-2 text-3xl font-black text-stone-900">{totalGourmetEspecialBags}</p></div>
+            <div><p className="text-sm text-stone-500">Bolsas Gourmet Especial ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.gourmetEspecial}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Bolsas de Blend (total)</p><p className="mt-2 text-3xl font-black text-stone-900">{totalBlendBags}</p></div>
+            <div><p className="text-sm text-stone-500">Bolsas de Blend ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.blend}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
           </div>
         </div>
@@ -108,16 +100,16 @@ export default function ProduccionPage() {
             <TabButton active={tab === 'blend'} onClick={() => setTab('blend')} icon={Blend} label="Blend" />
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-44"><DatePickerField value={diaFiltro} onChange={setDiaFiltro} placeholder="Buscar por día" /></div>
-            {diaFiltro && <button type="button" className="icon-btn" title="Quitar filtro" onClick={() => setDiaFiltro('')}><X size={16} /></button>}
+            <input type="month" className="input w-48" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} aria-label="Mes" />
+            {mesFiltro && <button type="button" className="icon-btn" title="Ver todo el histórico" onClick={() => setMesFiltro('')}><X size={16} /></button>}
           </div>
         </div>
 
         {list.length === 0 && (
           <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
             <div className="mb-3 rounded-2xl bg-stone-100 p-4 text-stone-500">{tab === 'gourmet' ? <Coffee size={28} /> : <Blend size={28} />}</div>
-            <h3 className="font-bold">{diaFiltro ? `Sin lotes de ${tab === 'gourmet' ? 'Gourmet' : 'Blend'} ese día` : `Aún no hay producciones de ${tab === 'gourmet' ? 'Gourmet' : 'Blend'}`}</h3>
-            <p className="mt-1 max-w-md text-sm text-stone-500">{diaFiltro ? 'Prueba con otra fecha o quita el filtro.' : 'Inicia un nuevo lote para comenzar a llevar el control.'}</p>
+            <h3 className="font-bold">{mesFiltro ? `Sin lotes de ${tab === 'gourmet' ? 'Gourmet' : 'Blend'} en ${periodoLabel}` : `Aún no hay producciones de ${tab === 'gourmet' ? 'Gourmet' : 'Blend'}`}</h3>
+            <p className="mt-1 max-w-md text-sm text-stone-500">{mesFiltro ? 'Prueba con otro mes o quita el filtro para ver todo.' : 'Inicia un nuevo lote para comenzar a llevar el control.'}</p>
           </div>
         )}
 
@@ -168,12 +160,8 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean, on
   )
 }
 
-function sameMonth(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
-}
-
 function finishedWeight(p: Production): number {
-  if (p.type === 'gourmet') return p.empaqueComercialLb + p.empaqueEspecialLb
+  if (p.type === 'gourmet') return packagedWeightLb(p.actualFullBags, p.actualRemainderGrams)
   return p.molidoMezclaWeightLb
 }
 
@@ -181,7 +169,7 @@ function summaryLine(p: Production): string {
   if (p.type === 'gourmet') {
     const roasted = roastedAllocatedLb(p.roasts)
     return p.status === 'terminada'
-      ? `${p.empaqueComercialLb.toFixed(1)} lb Comercial + ${p.empaqueEspecialLb.toFixed(1)} lb Especial`
+      ? `${p.actualFullBags} bolsas (${p.comercialBags} Comercial + ${p.especialBags} Especial)`
       : `${p.pergaminoUsedLb.toFixed(1)} lb Pergamino · en paso "${p.currentStepName}"${roasted ? ` · ${roasted.toFixed(1)} lb tostadas` : ''}`
   }
   return p.status === 'terminada'

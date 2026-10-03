@@ -11,6 +11,9 @@ const TABLES = [
   'producciones_blend',
   'inventario_movimientos',
   'inventario_stock',
+  'inventario_empaque_movimientos',
+  'inventario_empaque_stock',
+  'inventario_gourmet_empacado',
   'usuarios',
 ]
 

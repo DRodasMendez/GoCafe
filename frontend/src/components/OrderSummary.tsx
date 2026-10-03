@@ -71,6 +71,7 @@ export default function OrderSummary({ order }: { order: Order }) {
       </Section>
 
       <Section title="Empaque">
+        <Row label="Gramaje de bolsa" value={`${order.bagSizeGrams} g`} />
         <Row label="Resultado real" value={`${order.actualFullBags} bolsas completas${hasIncompleteBag ? ` + 1 bolsa incompleta de ${order.actualRemainderGrams.toFixed(1)} g` : ''}`} />
         <div className="mt-2 border-t border-stone-200 pt-2">
           <b>Distribución:</b>

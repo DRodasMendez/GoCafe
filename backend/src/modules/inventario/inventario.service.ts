@@ -1,8 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { prisma } from '../../lib/prisma'
 import { AppError } from '../../errors'
-import { bagsEquivalent, bagsToLb } from '../../utils/production'
+import { BAG_GRAMS, LB_TO_GRAMS, bagsEquivalent, bagsToLb } from '../../utils/production'
 import { ALL_MATERIALS, RAW_MATERIALS, STOCK_LABELS, type RawMaterialType, type StockMaterial } from './inventario.constants'
+import { consumirEmpaque } from './empaque.service'
 
 /** Acepta tanto el cliente normal como uno dentro de una transacción, para poder componer varios movimientos como una sola operación atómica (ver inventario y producción). */
 type Db = PrismaClient | Prisma.TransactionClient
@@ -197,35 +198,88 @@ export async function descontarGranoCafeteria(tipo: StockMaterial, cantidadLb: n
 }
 
 // ---------------------------------------------------------------------------
-// Producto terminado: Gourmet
+// Producto terminado: Gourmet. Es un solo café; lo que cambia es la bolsa en la que se llenó
+// durante la producción. El stock "gourmet" en libras es el total (bolsas llenas + café suelto);
+// inventario_gourmet_empacado lleva cuántas bolsas llenas hay de cada tipo.
 // ---------------------------------------------------------------------------
 
-export async function agregarGourmetTerminado(db: Db, comercialLb: number, especialLb: number, code: string) {
-  if (comercialLb > 0) {
-    await applyDelta(db, 'gourmet_comercial', comercialLb)
-    await addMovement(db, 'gourmet_comercial', 'entrada', comercialLb, 'Producción Gourmet finalizada', {
+export const GOURMET_BAG_TYPES = ['comercial', 'especial'] as const
+export type GourmetBagType = (typeof GOURMET_BAG_TYPES)[number]
+const GOURMET_BAG_LABELS: Record<GourmetBagType, string> = { comercial: 'Comercial', especial: 'Especial' }
+
+/** Tolerancia por el redondeo a 2 decimales de las libras guardadas (0.005 lb ≈ 2.3 g). */
+const SUELTO_TOLERANCIA_G = 3
+
+async function addEmpacado(db: Db, tipo: GourmetBagType, delta: number) {
+  await db.inventarioGourmetEmpacado.upsert({
+    where: { tipoBolsa: tipo },
+    create: { tipoBolsa: tipo, bolsas: delta },
+    update: { bolsas: { increment: delta } },
+  })
+}
+
+async function empacadoSnapshot(db: Db, forUpdate: boolean) {
+  const rows = forUpdate
+    ? await db.$queryRaw<{ tipo_bolsa: string; bolsas: number }[]>(
+        Prisma.sql`SELECT tipo_bolsa, bolsas FROM inventario_gourmet_empacado FOR UPDATE`
+      )
+    : (await db.inventarioGourmetEmpacado.findMany()).map(r => ({ tipo_bolsa: r.tipoBolsa, bolsas: r.bolsas }))
+  const by = new Map(rows.map(r => [r.tipo_bolsa, r.bolsas]))
+  return { comercial: by.get('comercial') ?? 0, especial: by.get('especial') ?? 0 }
+}
+
+function sueltoGramos(totalLb: number, bolsasLlenas: number): number {
+  return Math.max(0, Math.round((totalLb * LB_TO_GRAMS - bolsasLlenas * BAG_GRAMS) * 10) / 10)
+}
+
+export async function getGourmetEmpacado() {
+  const [bolsas, totalLb] = await Promise.all([empacadoSnapshot(prisma, false), currentStock(prisma, 'gourmet')])
+  return { ...bolsas, sueltoGramos: sueltoGramos(totalLb, bolsas.comercial + bolsas.especial) }
+}
+
+/** Al finalizar un lote: suma el peso total al stock y las bolsas llenas a su tipo. Lo que no se embolsó queda como café suelto. */
+export async function agregarGourmetTerminado(db: Db, cantidadLb: number, bolsas: Record<GourmetBagType, number>, code: string) {
+  if (cantidadLb > 0) {
+    await applyDelta(db, 'gourmet', cantidadLb)
+    await addMovement(db, 'gourmet', 'entrada', cantidadLb, `Producción Gourmet finalizada (${bolsas.comercial} Comercial + ${bolsas.especial} Especial)`, {
       referenciaTipo: 'produccion_gourmet',
       referenciaId: code,
     })
   }
-  if (especialLb > 0) {
-    await applyDelta(db, 'gourmet_especial', especialLb)
-    await addMovement(db, 'gourmet_especial', 'entrada', especialLb, 'Producción Gourmet finalizada', {
-      referenciaTipo: 'produccion_gourmet',
-      referenciaId: code,
-    })
+  for (const tipo of GOURMET_BAG_TYPES) {
+    if (bolsas[tipo] > 0) await addEmpacado(db, tipo, bolsas[tipo])
   }
 }
 
-export async function descontarGourmetTerminado(tipo: 'gourmet_comercial' | 'gourmet_especial', cantidadLb: number, motivo: string) {
-  if (cantidadLb <= 0) throw new AppError('La cantidad debe ser mayor que 0.')
+export async function descontarGourmetTerminado(tipo: GourmetBagType, bolsas: number, motivo: string) {
+  if (bolsas <= 0) throw new AppError('Ingresa una cantidad de bolsas mayor que 0.')
   await prisma.$transaction(async tx => {
-    const disponible = await currentStockForUpdate(tx, tipo)
-    if (disponible < cantidadLb) {
-      throw new AppError(`Solo hay ${disponible.toFixed(2)} lb disponibles de ${STOCK_LABELS[tipo]}.`)
+    // Mismo orden de bloqueo en todas las operaciones de Gourmet (stock en lb, luego bolsas) para no provocar deadlocks.
+    const stockLb = await currentStockForUpdate(tx, 'gourmet')
+    const empacado = await empacadoSnapshot(tx, true)
+    if (bolsas > empacado[tipo]) {
+      throw new AppError(`Solo hay ${empacado[tipo]} bolsas ${GOURMET_BAG_LABELS[tipo]} llenas disponibles.`)
     }
-    await applyDelta(tx, tipo, -cantidadLb)
-    await addMovement(tx, tipo, 'salida', cantidadLb, motivo)
+    const lb = Math.min(bagsToLb(bolsas), stockLb)
+    await addEmpacado(tx, tipo, -bolsas)
+    await applyDelta(tx, 'gourmet', -lb)
+    await addMovement(tx, 'gourmet', 'salida', lb, `${motivo} (${bolsas} bolsas ${GOURMET_BAG_LABELS[tipo]})`)
+  })
+}
+
+/** Cuando en bodega juntan el café suelto (sobrante de varios lotes) y llenan bolsas: pasan de suelto a bolsa llena, y se descuenta la bolsa vacía. El total en libras no cambia. */
+export async function empacarSobranteGourmet(tipo: GourmetBagType, bolsas: number, motivo: string) {
+  if (bolsas <= 0) throw new AppError('Ingresa una cantidad de bolsas mayor que 0.')
+  await prisma.$transaction(async tx => {
+    const stockLb = await currentStockForUpdate(tx, 'gourmet')
+    const empacado = await empacadoSnapshot(tx, true)
+    const suelto = sueltoGramos(stockLb, empacado.comercial + empacado.especial)
+    const alcanza = Math.floor((suelto + SUELTO_TOLERANCIA_G) / BAG_GRAMS)
+    if (bolsas > alcanza) {
+      throw new AppError(`Solo hay ${suelto.toFixed(1)} g de café suelto: alcanza para ${alcanza} bolsa${alcanza === 1 ? '' : 's'} de ${BAG_GRAMS} g.`)
+    }
+    await addEmpacado(tx, tipo, bolsas)
+    await consumirEmpaque(tx, tipo, bolsas, motivo || 'Empaque de café suelto (sobrante de lotes)', { referenciaTipo: 'manual' })
   })
 }
 

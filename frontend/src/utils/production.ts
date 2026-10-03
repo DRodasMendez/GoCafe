@@ -3,10 +3,11 @@ export const BAG_GRAMS = 350
 export const MAX_ROAST_LB = 15
 
 export function lbToGrams(lb: number) { return lb * LB_TO_GRAMS }
-export function packagingFromLb(lb: number) {
+/** bagGrams es opcional porque Producción propia siempre usa bolsas de 350 g; Clientes pasa el gramaje propio de cada orden (ver Order.bagSizeGrams). */
+export function packagingFromLb(lb: number, bagGrams: number = BAG_GRAMS) {
   const grams = lbToGrams(lb)
-  const fullBags = Math.floor(grams / BAG_GRAMS)
-  const remainderGrams = grams - fullBags * BAG_GRAMS
+  const fullBags = Math.floor(grams / bagGrams)
+  const remainderGrams = grams - fullBags * bagGrams
   return { grams, fullBags, remainderGrams }
 }
 

@@ -1,8 +1,10 @@
 import { OrderStatus, type Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma'
-import { NotFoundError } from '../../errors'
+import { AppError, NotFoundError } from '../../errors'
 import { statusForCompletedStep } from '../../utils/orderStatus'
 import { formatFolio } from '../../utils/folio'
+import * as empaqueService from '../inventario/empaque.service'
+import { CLIENT_PACKAGE_TYPES } from '../inventario/empaque.constants'
 
 const ROASTS_ORDER = { orderBy: { seq: 'asc' as const } }
 
@@ -55,6 +57,7 @@ interface CreateOrdenInput {
   roastType: string
   grindType: string
   totalPrice?: number
+  bagSizeGrams?: number
   actualFullBags?: number
   actualRemainderGrams?: number
   packageAllocation: Record<string, number>
@@ -78,6 +81,7 @@ export async function createOrden(input: CreateOrdenInput) {
       roastType: input.roastType,
       grindType: input.grindType,
       totalPrice: input.totalPrice ?? 0,
+      bagSizeGrams: input.bagSizeGrams ?? 350,
       actualFullBags: input.actualFullBags ?? 0,
       actualRemainderGrams: input.actualRemainderGrams ?? 0,
       packageAllocation: input.packageAllocation,
@@ -125,10 +129,24 @@ export async function updateOrden(id: string, patch: UpdateOrdenPatch) {
   return getOrden(id)
 }
 
+/** Al finalizar (y solo aquí) se descuentan del inventario de empaque las bolsas usadas por esta orden, en la misma transacción que marca el estado — igual que producción descuenta materia prima al cerrar un lote. */
 export async function finalizeOrden(id: string) {
-  const exists = await prisma.orden.findUnique({ where: { id } })
-  if (!exists) throw new NotFoundError('Orden no encontrada.')
-  await prisma.orden.update({ where: { id }, data: { status: OrderStatus.Finalizado, finalizedAt: new Date() } })
+  await prisma.$transaction(async tx => {
+    const exists = await tx.orden.findUnique({ where: { id } })
+    if (!exists) throw new NotFoundError('Orden no encontrada.')
+    if (exists.status === OrderStatus.Finalizado) throw new AppError('Esta orden ya fue finalizada.')
+
+    const folio = formatFolio('GC', exists.seq)
+    const allocation = (exists.packageAllocation as Record<string, number>) ?? {}
+    const hasIncompleteBag = exists.actualRemainderGrams.toNumber() > 0
+
+    for (const type of CLIENT_PACKAGE_TYPES) {
+      const qty = (allocation[type] ?? 0) + (hasIncompleteBag && exists.incompletePackageType === type ? 1 : 0)
+      await empaqueService.consumirEmpaque(tx, type, qty, `Orden ${folio}`, { referenciaTipo: 'orden', referenciaId: folio })
+    }
+
+    await tx.orden.update({ where: { id }, data: { status: OrderStatus.Finalizado, finalizedAt: new Date() } })
+  })
   return getOrden(id)
 }
 

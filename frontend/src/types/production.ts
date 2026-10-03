@@ -60,8 +60,12 @@ export interface GourmetProduction {
   pesoTuesteResultLb: number
   reservaCafeteriaLb: number
   molidoWeightLb: number
-  empaqueComercialLb: number
-  empaqueEspecialLb: number
+  /** Comercial y Especial no son productos distintos — es el mismo café Gourmet, la diferencia es solo la bolsa (ver comercialBags/especialBags). */
+  actualFullBags: number
+  actualRemainderGrams: number
+  /** Reparto de actualFullBags entre los dos tipos de bolsa física (inventario de empaque): comercialBags + especialBags debe sumar actualFullBags. */
+  comercialBags: number
+  especialBags: number
   notas: string
   createdAt: string
   updatedAt: string
@@ -88,6 +92,8 @@ export interface BlendProduction {
   molidoMezclaWeightLb: number
   actualFullBags: number
   actualRemainderGrams: number
+  /** Tipo de bolsa física (inventario de empaque) usada para las actualFullBags de este lote. */
+  bagType: PackagingType
   notas: string
   createdAt: string
   updatedAt: string

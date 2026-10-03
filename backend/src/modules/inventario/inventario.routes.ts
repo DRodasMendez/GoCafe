@@ -3,7 +3,9 @@ import { z } from 'zod'
 import { asyncHandler } from '../../middleware/asyncHandler'
 import { AppError } from '../../errors'
 import * as inventarioService from './inventario.service'
+import * as empaqueService from './empaque.service'
 import { RAW_MATERIALS, type RawMaterialType } from './inventario.constants'
+import { EMPAQUE_TYPES, type EmpaqueType } from './empaque.constants'
 
 export const inventarioRouter = Router()
 
@@ -12,6 +14,13 @@ function parseRawMaterial(value: string): RawMaterialType {
     throw new AppError(`Material inválido: ${value}. Debe ser uno de: ${RAW_MATERIALS.join(', ')}.`)
   }
   return value as RawMaterialType
+}
+
+function parseEmpaqueType(value: string): EmpaqueType {
+  if (!(EMPAQUE_TYPES as readonly string[]).includes(value)) {
+    throw new AppError(`Tipo de empaque inválido: ${value}.`)
+  }
+  return value as EmpaqueType
 }
 
 const ROAST_TYPES = ['claro', 'medio', 'oscuro'] as const
@@ -87,13 +96,33 @@ inventarioRouter.post(
   })
 )
 
+const gourmetBolsasSchema = z.object({
+  tipoBolsa: z.enum(inventarioService.GOURMET_BAG_TYPES),
+  bolsas: z.number().int().positive(),
+  motivo: z.string().default(''),
+})
+
+inventarioRouter.get(
+  '/gourmet/empacado',
+  asyncHandler(async (_req, res) => {
+    res.json(await inventarioService.getGourmetEmpacado())
+  })
+)
+
 inventarioRouter.post(
-  '/gourmet/:tipo/salida',
+  '/gourmet/salida',
   asyncHandler(async (req, res) => {
-    const tipo = req.params.tipo === 'comercial' ? 'gourmet_comercial' : req.params.tipo === 'especial' ? 'gourmet_especial' : null
-    if (!tipo) throw new AppError('Tipo inválido: usa "comercial" o "especial".')
-    const { cantidadLb, motivo } = cantidadMotivoSchema.parse(req.body)
-    await inventarioService.descontarGourmetTerminado(tipo, cantidadLb, motivo)
+    const { tipoBolsa, bolsas, motivo } = gourmetBolsasSchema.parse(req.body)
+    await inventarioService.descontarGourmetTerminado(tipoBolsa, bolsas, motivo)
+    res.status(204).end()
+  })
+)
+
+inventarioRouter.post(
+  '/gourmet/empacar-sobrante',
+  asyncHandler(async (req, res) => {
+    const { tipoBolsa, bolsas, motivo } = gourmetBolsasSchema.parse(req.body)
+    await inventarioService.empacarSobranteGourmet(tipoBolsa, bolsas, motivo)
     res.status(204).end()
   })
 )
@@ -103,6 +132,70 @@ inventarioRouter.post(
   asyncHandler(async (req, res) => {
     const { bolsas, motivo } = z.object({ bolsas: z.number().int().positive(), motivo: z.string().default('') }).parse(req.body)
     await inventarioService.enviarBlendTerminado(bolsas, motivo)
+    res.status(204).end()
+  })
+)
+
+// ---------------------------------------------------------------------------
+// Empaque (bolsas físicas): 6 tipos de Clientes + "comercial"/"especial" de Producción propia
+// ---------------------------------------------------------------------------
+
+const cantidadMotivoEmpaqueSchema = z.object({ cantidad: z.number().int().positive(), motivo: z.string().default('') })
+
+inventarioRouter.get(
+  '/empaque/stock',
+  asyncHandler(async (_req, res) => {
+    res.json(await empaqueService.getEmpaqueStockSnapshot())
+  })
+)
+
+inventarioRouter.get(
+  '/empaque/alertas',
+  asyncHandler(async (_req, res) => {
+    res.json(await empaqueService.getEmpaqueAlerts())
+  })
+)
+
+inventarioRouter.get(
+  '/empaque/movimientos',
+  asyncHandler(async (req, res) => {
+    const { tipo, desde, hasta } = req.query
+    res.json(
+      await empaqueService.getEmpaqueMovimientos({
+        tipo: typeof tipo === 'string' ? parseEmpaqueType(tipo) : undefined,
+        desde: typeof desde === 'string' ? new Date(desde) : undefined,
+        hasta: typeof hasta === 'string' ? new Date(hasta) : undefined,
+      })
+    )
+  })
+)
+
+inventarioRouter.post(
+  '/empaque/:tipo/entrada',
+  asyncHandler(async (req, res) => {
+    const tipo = parseEmpaqueType(req.params.tipo)
+    const { cantidad, motivo } = cantidadMotivoEmpaqueSchema.parse(req.body)
+    await empaqueService.registrarEntradaEmpaque(tipo, cantidad, motivo)
+    res.status(204).end()
+  })
+)
+
+inventarioRouter.post(
+  '/empaque/:tipo/salida',
+  asyncHandler(async (req, res) => {
+    const tipo = parseEmpaqueType(req.params.tipo)
+    const { cantidad, motivo } = cantidadMotivoEmpaqueSchema.parse(req.body)
+    await empaqueService.registrarSalidaEmpaque(tipo, cantidad, motivo)
+    res.status(204).end()
+  })
+)
+
+inventarioRouter.patch(
+  '/empaque/:tipo/umbral',
+  asyncHandler(async (req, res) => {
+    const tipo = parseEmpaqueType(req.params.tipo)
+    const { minimo } = z.object({ minimo: z.number().int().min(0) }).parse(req.body)
+    await empaqueService.updateEmpaqueUmbral(tipo, minimo)
     res.status(204).end()
   })
 )

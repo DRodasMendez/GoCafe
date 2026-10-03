@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { useClients } from '../store/clientsStore'
 import { useOrders } from '../store/ordersStore'
 import { useAllProductions } from '../store/productionStore'
-import { bagsEquivalent, getInventoryAlerts, useInventory } from '../store/inventoryStore'
+import { bagsEquivalent, getInventoryAlerts, useGourmetEmpacado, useInventory } from '../store/inventoryStore'
 
 export default function Dashboard() {
   const clients = useClients()
@@ -17,8 +17,8 @@ export default function Dashboard() {
   const rawMaterialLb = stock.pergamino + stock.oro + stock.natural
   const productionInProgress = productions.filter(p => p.status === 'en_proceso').length
   const blendBags = bagsEquivalent(stock.blendFinishedLb).fullBags
-  const gourmetComercialBags = bagsEquivalent(stock.gourmetComercialLb).fullBags
-  const gourmetEspecialBags = bagsEquivalent(stock.gourmetEspecialLb).fullBags
+  const gourmetEmpacado = useGourmetEmpacado()
+  const gourmetBags = gourmetEmpacado.comercial + gourmetEmpacado.especial
 
   const cards = [
     { label: 'Clientes activos', value: String(clients.length), icon: Users },
@@ -72,8 +72,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Lotes en proceso</p><p className="mt-1 text-2xl font-black text-stone-900">{productionInProgress}</p></div>
             <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bolsas de Blend</p><p className="mt-1 text-2xl font-black text-stone-900">{blendBags}</p></div>
-            <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bolsas Gourmet Comercial</p><p className="mt-1 text-2xl font-black text-stone-900">{gourmetComercialBags}</p></div>
-            <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bolsas Gourmet Especial</p><p className="mt-1 text-2xl font-black text-stone-900">{gourmetEspecialBags}</p></div>
+            <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Bolsas de Gourmet</p><p className="mt-1 text-2xl font-black text-stone-900">{gourmetBags}</p><p className="text-xs text-stone-500">{gourmetEmpacado.comercial} Comercial · {gourmetEmpacado.especial} Especial</p></div>
           </div>
         </div>
       </div>

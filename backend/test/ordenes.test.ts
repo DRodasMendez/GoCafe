@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { prisma } from '../src/lib/prisma'
 import { resetDb, disconnectDb } from './helpers/db'
 import { request, app, createAdminAndLogin, authHeader } from './helpers/testApp'
+
+async function setEmpaqueStock(tipo: string, cantidad: number) {
+  await prisma.inventarioEmpaqueStock.upsert({ where: { tipo }, create: { tipo, cantidad }, update: { cantidad } })
+}
 
 let token: string
 let clienteId: string
@@ -156,6 +161,55 @@ describe('POST /api/ordenes/:id/finalizar', () => {
       .send({ currentStepName: 'Recepción' })
     expect(res.status).toBe(200)
     expect(res.body.status).toBe('Finalizado')
+  })
+
+  it('no permite finalizar dos veces la misma orden', async () => {
+    const created = await request(app).post('/api/ordenes').set(authHeader(token)).send(baseOrden())
+    await request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token))
+    const segunda = await request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token))
+    expect(segunda.status).toBe(400)
+  })
+
+  it('descuenta del inventario de empaque las bolsas distribuidas + la bolsa incompleta, al finalizar', async () => {
+    await setEmpaqueStock('transparente', 5)
+    await setEmpaqueStock('laminada', 3)
+    const created = await request(app)
+      .post('/api/ordenes')
+      .set(authHeader(token))
+      .send(
+        baseOrden({
+          actualFullBags: 5,
+          actualRemainderGrams: 120,
+          packageAllocation: { transparente: 3, laminada: 2 },
+          incompletePackageType: 'laminada',
+        })
+      )
+
+    const res = await request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(200)
+
+    const empaque = await request(app).get('/api/inventario/empaque/stock').set(authHeader(token))
+    const byTipo = Object.fromEntries(empaque.body.map((s: any) => [s.tipo, s.cantidad]))
+    expect(byTipo.transparente).toBe(2) // 5 - 3
+    expect(byTipo.laminada).toBe(0) // 3 - 2 (distribuidas) - 1 (incompleta)
+
+    const movimientos = await request(app).get('/api/inventario/empaque/movimientos').set(authHeader(token))
+    const deLaOrden = movimientos.body.filter((m: any) => m.referenciaId === created.body.orderNo)
+    expect(deLaOrden).toHaveLength(2) // transparente + laminada
+  })
+
+  it('falla al finalizar si no hay suficientes bolsas del tipo distribuido, sin aplicar nada', async () => {
+    await setEmpaqueStock('transparente', 1)
+    const created = await request(app)
+      .post('/api/ordenes')
+      .set(authHeader(token))
+      .send(baseOrden({ actualFullBags: 3, actualRemainderGrams: 0, packageAllocation: { transparente: 3 } }))
+
+    const res = await request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(400)
+
+    const orden = await request(app).get(`/api/ordenes/${created.body.id}`).set(authHeader(token))
+    expect(orden.body.status).not.toBe('Finalizado')
   })
 })
 

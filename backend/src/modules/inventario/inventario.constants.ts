@@ -8,8 +8,8 @@ export type StockMaterial =
   | 'grano_claro'
   | 'grano_medio'
   | 'grano_oscuro'
-  | 'gourmet_comercial'
-  | 'gourmet_especial'
+  /** Comercial y Especial no son productos distintos — es el mismo café Gourmet, la diferencia es solo la bolsa (ver inventario_empaque_stock: 'comercial' / 'especial'). */
+  | 'gourmet'
   | 'blend_bolsas'
 
 export const ALL_MATERIALS: StockMaterial[] = [
@@ -19,8 +19,7 @@ export const ALL_MATERIALS: StockMaterial[] = [
   'grano_claro',
   'grano_medio',
   'grano_oscuro',
-  'gourmet_comercial',
-  'gourmet_especial',
+  'gourmet',
   'blend_bolsas',
 ]
 
@@ -31,8 +30,7 @@ export const STOCK_LABELS: Record<StockMaterial, string> = {
   grano_claro: 'Café en grano — Tueste Claro',
   grano_medio: 'Café en grano — Tueste Medio',
   grano_oscuro: 'Café en grano — Tueste Oscuro',
-  gourmet_comercial: 'Gourmet Comercial',
-  gourmet_especial: 'Gourmet Especial',
+  gourmet: 'Gourmet (terminado)',
   blend_bolsas: 'Blend (bolsas de 350 g)',
 }
 

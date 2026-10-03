@@ -130,8 +130,10 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
   const [roastType, setRoastType] = useState(() => existingOrder?.roastType ?? 'medio')
   const [grindType, setGrindType] = useState(() => existingOrder?.grindType ?? 'media')
   const [totalPrice, setTotalPrice] = useState(() => existingOrder?.totalPrice ? String(existingOrder.totalPrice) : '')
+  const [bagSizeGramsStr, setBagSizeGramsStr] = useState(() => String(existingOrder?.bagSizeGrams ?? BAG_GRAMS))
+  const bagSizeGrams = Number(bagSizeGramsStr) || BAG_GRAMS
 
-  const suggestedPackaging = useMemo(() => packagingFromLb(Number(finalWeight) || 0), [finalWeight])
+  const suggestedPackaging = useMemo(() => packagingFromLb(Number(finalWeight) || 0, bagSizeGrams), [finalWeight, bagSizeGrams])
   const [actualFullBags, setActualFullBags] = useState<number | ''>(() => (existingOrder && empaqueAlreadyVisited) ? existingOrder.actualFullBags : '')
   const [actualRemainderGrams, setActualRemainderGrams] = useState<number | ''>(() => (existingOrder && empaqueAlreadyVisited) ? existingOrder.actualRemainderGrams : '')
   const [packageAllocation, setPackageAllocation] = useState<PackageAllocation>(() => existingOrder?.packageAllocation ?? emptyAllocation())
@@ -205,6 +207,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     roastType,
     grindType,
     totalPrice: Number(totalPrice) || 0,
+    bagSizeGrams,
     actualFullBags: effectiveFullBags,
     actualRemainderGrams: effectiveRemainder,
     packageAllocation,
@@ -379,8 +382,12 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
         setPageError('Las bolsas y el sobrante no pueden tener valores negativos.')
         return false
       }
-      if (effectiveRemainder >= BAG_GRAMS) {
-        setPageError(`La bolsa incompleta debe tener menos de ${BAG_GRAMS} g. Si llega a ${BAG_GRAMS} g, debe contarse como una bolsa completa.`)
+      if (bagSizeGrams <= 0) {
+        setPageError('Ingresa un gramaje de bolsa válido mayor que 0.')
+        return false
+      }
+      if (effectiveRemainder >= bagSizeGrams) {
+        setPageError(`La bolsa incompleta debe tener menos de ${bagSizeGrams} g. Si llega a ${bagSizeGrams} g, debe contarse como una bolsa completa.`)
         return false
       }
       if (hasPackageOverAllocation) {
@@ -598,7 +605,14 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
           <div className="card p-6">
             <SectionTitle title={`${step + 1}. Empaque`} subtitle="Resultados del Sistema" />
 
-            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+            <div className="max-w-xs">
+              <Field label="Gramaje de bolsa (g)">
+                <input type="number" min="1" step="1" className="input" value={bagSizeGramsStr} onChange={e => { setPageError(''); setBagSizeGramsStr(e.target.value) }} />
+              </Field>
+              <p className="mt-1.5 text-xs text-stone-500">Este cliente puede pedir un gramaje distinto al estándar de {BAG_GRAMS} g.</p>
+            </div>
+
+            <div className="mb-5 mt-5 grid gap-3 sm:grid-cols-3">
               <Stat label="Peso convertido" value={`${suggestedPackaging.grams.toFixed(1)} g`} />
               <Stat label="Sugerencia automática" value={`${suggestedPackaging.fullBags} bolsas`} />
               <Stat label="Sobrante sugerido" value={`${suggestedPackaging.remainderGrams.toFixed(1)} g`} />
@@ -608,8 +622,8 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
               <h4 className="font-black text-stone-900">Resultado real del empaque</h4>
               <p className="mt-1 text-sm text-stone-600">Puedes corregir estos valores si el resultado físico fue diferente al cálculo sugerido.</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <Field label="Bolsas completas (350 g)"><input type="number" min="0" step="1" className="input" placeholder={String(suggestedPackaging.fullBags)} value={actualFullBags} onChange={e => { setPageError(''); setActualFullBags(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>
-                <Field label="Bolsa incompleta / sobrante (g)"><input type="number" min="0" max="349.99" step="0.1" className={`input ${effectiveRemainder >= BAG_GRAMS ? '!border-red-400 !bg-red-50' : ''}`} placeholder={suggestedPackaging.remainderGrams.toFixed(1)} value={actualRemainderGrams} onChange={e => { setPageError(''); setActualRemainderGrams(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0)) }} /></Field>
+                <Field label={`Bolsas completas (${bagSizeGrams} g)`}><input type="number" min="0" step="1" className="input" placeholder={String(suggestedPackaging.fullBags)} value={actualFullBags} onChange={e => { setPageError(''); setActualFullBags(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>
+                <Field label="Bolsa incompleta / sobrante (g)"><input type="number" min="0" max={bagSizeGrams - 0.01} step="0.1" className={`input ${effectiveRemainder >= bagSizeGrams ? '!border-red-400 !bg-red-50' : ''}`} placeholder={suggestedPackaging.remainderGrams.toFixed(1)} value={actualRemainderGrams} onChange={e => { setPageError(''); setActualRemainderGrams(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0)) }} /></Field>
               </div>
               <p className="mt-3 text-sm text-stone-700"><b>Resultado registrado:</b> {effectiveFullBags} bolsas completas{hasIncompleteBag ? ` + 1 bolsa incompleta de ${effectiveRemainder.toFixed(1)} g` : ''}.</p>
             </div>

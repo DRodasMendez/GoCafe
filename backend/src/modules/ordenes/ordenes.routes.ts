@@ -40,6 +40,7 @@ const createOrdenSchema = z.object({
   roastType: z.string(),
   grindType: z.string(),
   totalPrice: z.number().optional(),
+  bagSizeGrams: z.number().positive().optional(),
   actualFullBags: z.number().int().optional(),
   actualRemainderGrams: z.number().optional(),
   packageAllocation: packageAllocationSchema,

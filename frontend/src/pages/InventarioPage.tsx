@@ -1,22 +1,33 @@
 import { useMemo, useState } from 'react'
-import { ArrowDownCircle, ArrowUpCircle, Blend, CheckCircle2, Coffee, Loader2, PackageCheck, Pencil, Warehouse, X, XCircle } from 'lucide-react'
+import { ArrowDownCircle, ArrowUpCircle, Blend, CheckCircle2, Coffee, Loader2, Package, PackageCheck, Pencil, Warehouse, X, XCircle } from 'lucide-react'
 import { RAW_MATERIAL_LABELS, ROAST_TYPES, ROAST_TYPE_LABELS } from '../types/production'
 import type { RawMaterialType, RoastType } from '../types/production'
-import { bagsToLb, localISODate, todayISODate } from '../utils/production'
+import { PACKAGE_TYPES } from '../types/order'
+import { BAG_GRAMS, localISODate, todayISODate } from '../utils/production'
 import {
   RAW_MATERIALS,
   STOCK_LABELS,
   bagsEquivalent,
   descontarGourmetTerminado,
   descontarGranoCafeteria,
+  empacarSobranteGourmet,
   enviarBlendTerminado,
+  getEmpaqueAlerts,
   getInventoryAlerts,
+  registrarEntradaEmpaque,
   registrarEntradaMateriaPrima,
+  registrarSalidaEmpaque,
   registrarSalidaMateriaPrima,
+  updateEmpaqueUmbral,
   updateThreshold,
+  useEmpaqueMovements,
+  useEmpaqueStock,
+  useGourmetEmpacado,
   useInventory,
   useMovements,
-  type FinishedGourmetType,
+  type EmpaqueStockItem,
+  type GourmetBagType,
+  type GourmetEmpacado,
   type StockMaterial,
 } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
@@ -29,35 +40,51 @@ const INVENTORY_TABS = [
   { id: 'grano-cafeteria', label: 'Café en grano (cafetería)', icon: Coffee },
   { id: 'terminado-gourmet', label: 'Terminado — Gourmet', icon: PackageCheck },
   { id: 'terminado-blend', label: 'Terminado — Blend', icon: Blend },
+  { id: 'empaque', label: 'Empaque (bolsas)', icon: Package },
 ] as const
 
 type InventoryTab = (typeof INVENTORY_TABS)[number]['id']
 
 export default function InventarioPage() {
   const { stock, thresholds } = useInventory()
+  const empaqueStock = useEmpaqueStock()
   const alerts = useMemo(() => getInventoryAlerts(), [stock, thresholds])
+  const empaqueAlerts = useMemo(() => getEmpaqueAlerts(), [empaqueStock])
   const [tab, setTab] = useState<InventoryTab>('materia-prima')
 
   const [entradaMaterial, setEntradaMaterial] = useState<RawMaterialType | null>(null)
   const [editarMaterial, setEditarMaterial] = useState<RawMaterialType | null>(null)
   const [retiroGranoOpen, setRetiroGranoOpen] = useState(false)
-  const [salidaTerminado, setSalidaTerminado] = useState<{ kind: 'gourmet', tipo: FinishedGourmetType } | { kind: 'blend' } | null>(null)
+  const gourmetEmpacado = useGourmetEmpacado()
+  const [blendSalidaOpen, setBlendSalidaOpen] = useState(false)
+  const [gourmetSalidaOpen, setGourmetSalidaOpen] = useState(false)
+  const [empacarSobranteOpen, setEmpacarSobranteOpen] = useState(false)
+  const [entradaEmpaque, setEntradaEmpaque] = useState<EmpaqueStockItem | null>(null)
+  const [editarEmpaque, setEditarEmpaque] = useState<EmpaqueStockItem | null>(null)
 
-  const comercialBags = bagsEquivalent(stock.gourmetComercialLb)
-  const especialBags = bagsEquivalent(stock.gourmetEspecialLb)
   const blendBags = bagsEquivalent(stock.blendFinishedLb)
+  const sueltoAlcanzaPara = Math.floor((gourmetEmpacado.sueltoGramos + 3) / BAG_GRAMS)
+
+  const empaqueClientes = empaqueStock.filter(e => (PACKAGE_TYPES as readonly string[]).includes(e.tipo))
+  const empaqueProduccion = empaqueStock.filter(e => !(PACKAGE_TYPES as readonly string[]).includes(e.tipo))
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-black">Inventario de producción</h2>
-        <p className="mt-1 text-sm text-stone-500">Materia prima, café en grano, y producto terminado de Gourmet y Blend.</p>
+        <p className="mt-1 text-sm text-stone-500">Materia prima, café en grano, producto terminado de Gourmet y Blend, y bolsas de empaque.</p>
       </div>
 
-      {alerts.length > 0 ? (
+      {[...alerts, ...empaqueAlerts].length > 0 ? (
         <div className="space-y-2">
           {alerts.map((a, i) => (
-            <div key={i} className="flex gap-2 text-sm font-medium text-red-700">
+            <div key={`mp-${i}`} className="flex gap-2 text-sm font-medium text-red-700">
+              <XCircle className="mt-0.5 shrink-0" size={18} />
+              <span><b>{a.title}.</b> {a.message}</span>
+            </div>
+          ))}
+          {empaqueAlerts.map((a, i) => (
+            <div key={`emp-${i}`} className="flex gap-2 text-sm font-medium text-red-700">
               <XCircle className="mt-0.5 shrink-0" size={18} />
               <span><b>{a.title}.</b> {a.message}</span>
             </div>
@@ -66,7 +93,7 @@ export default function InventarioPage() {
       ) : (
         <div className="flex gap-2 text-sm font-medium text-emerald-700">
           <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
-          <span>Pergamino, Oro y Natural están por encima del mínimo de 25 lb.</span>
+          <span>Pergamino, Oro y Natural están por encima del mínimo de 25 lb, y las bolsas con mínimo configurado también.</span>
         </div>
       )}
 
@@ -117,23 +144,76 @@ export default function InventarioPage() {
 
           {tab === 'terminado-gourmet' && (
             <>
+              <p className="text-sm text-stone-500">Es el mismo café Gourmet; se embolsa en la producción en bolsa Comercial o Especial.</p>
               <div className="grid gap-4 md:grid-cols-2">
-                <FinishedStockCard label="Gourmet Comercial" lb={stock.gourmetComercialLb} bags={comercialBags} onSalida={() => setSalidaTerminado({ kind: 'gourmet', tipo: 'gourmetComercial' })} />
-                <FinishedStockCard label="Gourmet Especial" lb={stock.gourmetEspecialLb} bags={especialBags} onSalida={() => setSalidaTerminado({ kind: 'gourmet', tipo: 'gourmetEspecial' })} />
+                <div className="card p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-stone-500">Gourmet empacado</p>
+                      <p className="mt-2 text-2xl font-black text-stone-900">{gourmetEmpacado.comercial + gourmetEmpacado.especial} bolsas <span className="text-base font-semibold text-stone-400">· {stock.gourmetLb.toFixed(2)} lb</span></p>
+                    </div>
+                    <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Comercial</p><p className="mt-1 text-xl font-black text-stone-900">{gourmetEmpacado.comercial}</p></div>
+                    <div className="rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Especial</p><p className="mt-1 text-xl font-black text-stone-900">{gourmetEmpacado.especial}</p></div>
+                  </div>
+                  <p className="mt-3 text-xs text-stone-500">
+                    Café suelto sin empacar: <b className="text-stone-700">{gourmetEmpacado.sueltoGramos.toFixed(1)} g</b>
+                    {sueltoAlcanzaPara > 0 && <> — alcanza para {sueltoAlcanzaPara} bolsa{sueltoAlcanzaPara === 1 ? '' : 's'} más</>}
+                  </p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <button className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-40" disabled={gourmetEmpacado.comercial + gourmetEmpacado.especial <= 0} onClick={() => setGourmetSalidaOpen(true)}><ArrowDownCircle size={16} /> Enviar a cafetería</button>
+                    <button className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-40" disabled={sueltoAlcanzaPara <= 0} onClick={() => setEmpacarSobranteOpen(true)}><Package size={16} /> Empacar sobrante</button>
+                  </div>
+                </div>
+                <div className="card p-5">
+                  <p className="text-sm text-stone-500">Bolsas vacías en bodega (para los próximos lotes)</p>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {empaqueProduccion.map(item => (
+                      <div key={item.tipo} className="rounded-xl bg-stone-100 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{item.label.replace(' (Producción propia)', '')}</p>
+                        <p className="mt-1 text-2xl font-black text-stone-900">{item.cantidad}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" className="mt-3 text-xs font-semibold text-amber-700 hover:underline" onClick={() => setTab('empaque')}>
+                    Comprar más / ver historial →
+                  </button>
+                </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <MonthlyHistory title="Historial — Gourmet Comercial" materials={['gourmetComercial']} />
-                <MonthlyHistory title="Historial — Gourmet Especial" materials={['gourmetEspecial']} />
-              </div>
+              <MonthlyHistory title="Historial de movimientos — Gourmet" materials={['gourmet']} />
             </>
           )}
 
           {tab === 'terminado-blend' && (
             <>
               <div className="max-w-md">
-                <FinishedStockCard label="Blend" icon={Blend} lb={stock.blendFinishedLb} bags={blendBags} onSalida={() => setSalidaTerminado({ kind: 'blend' })} actionLabel="Enviar al mayoreo" />
+                <FinishedStockCard label="Blend" icon={Blend} lb={stock.blendFinishedLb} bags={blendBags} onSalida={() => setBlendSalidaOpen(true)} actionLabel="Enviar al mayoreo" />
               </div>
               <MonthlyHistory title="Historial de movimientos — Blend" materials={['blendBolsas']} />
+            </>
+          )}
+
+          {tab === 'empaque' && (
+            <>
+              <div>
+                <p className="mb-3 text-sm font-semibold text-stone-700">Clientes — empaque del café que se procesa para cada cliente</p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {empaqueClientes.map(item => (
+                    <EmpaqueCard key={item.tipo} item={item} onEntrada={() => setEntradaEmpaque(item)} onEditar={() => setEditarEmpaque(item)} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-3 text-sm font-semibold text-stone-700">Producción propia — empaque de Gourmet y Blend</p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {empaqueProduccion.map(item => (
+                    <EmpaqueCard key={item.tipo} item={item} onEntrada={() => setEntradaEmpaque(item)} onEditar={() => setEditarEmpaque(item)} />
+                  ))}
+                </div>
+              </div>
+              <EmpaqueHistory />
             </>
           )}
         </div>
@@ -142,13 +222,18 @@ export default function InventarioPage() {
       {entradaMaterial && <EntradaModal material={entradaMaterial} onClose={() => setEntradaMaterial(null)} />}
       {editarMaterial && <EditarStockModal material={editarMaterial} stockLb={stock[editarMaterial]} onClose={() => setEditarMaterial(null)} />}
       {retiroGranoOpen && <RetiroGranoModal onClose={() => setRetiroGranoOpen(false)} />}
-      {salidaTerminado && (
-        <SalidaTerminadoModal
-          target={salidaTerminado}
-          availableFullBags={salidaTerminado.kind === 'blend' ? blendBags.fullBags : (salidaTerminado.tipo === 'gourmetComercial' ? comercialBags.fullBags : especialBags.fullBags)}
-          onClose={() => setSalidaTerminado(null)}
+      {blendSalidaOpen && <BlendSalidaModal availableFullBags={blendBags.fullBags} onClose={() => setBlendSalidaOpen(false)} />}
+      {gourmetSalidaOpen && <GourmetSalidaModal empacado={gourmetEmpacado} onClose={() => setGourmetSalidaOpen(false)} />}
+      {empacarSobranteOpen && (
+        <EmpacarSobranteModal
+          sueltoGramos={gourmetEmpacado.sueltoGramos}
+          alcanzaPara={sueltoAlcanzaPara}
+          empaqueStock={empaqueProduccion}
+          onClose={() => setEmpacarSobranteOpen(false)}
         />
       )}
+      {entradaEmpaque && <EmpaqueEntradaModal item={entradaEmpaque} onClose={() => setEntradaEmpaque(null)} />}
+      {editarEmpaque && <EmpaqueEditarModal item={editarEmpaque} onClose={() => setEditarEmpaque(null)} />}
     </div>
   )
 }
@@ -222,14 +307,211 @@ function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, 
   )
 }
 
+function EmpaqueCard({ item, onEntrada, onEditar }: { item: EmpaqueStockItem, onEntrada: () => void, onEditar: () => void }) {
+  const [editingThreshold, setEditingThreshold] = useState(false)
+  const [thresholdStr, setThresholdStr] = useState(String(item.minimo ?? 0))
+  const low = item.minimo != null && item.cantidad < item.minimo
+
+  return (
+    <div className={`card p-5 ${low ? 'border-red-300' : ''}`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-stone-500">{item.label}</p>
+          <p className={`mt-2 text-3xl font-black ${low ? 'text-red-600' : 'text-stone-900'}`}>{item.cantidad} <span className="text-base font-semibold text-stone-400">unidades</span></p>
+        </div>
+        <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Package size={20} /></div>
+      </div>
+
+      {editingThreshold ? (
+        <div className="mt-3 flex items-center gap-2">
+          <input type="number" min="0" step="1" className="input" value={thresholdStr} onChange={e => setThresholdStr(e.target.value)} />
+          <button
+            className="btn-secondary shrink-0 !px-3"
+            onClick={async () => {
+              try {
+                await updateEmpaqueUmbral(item.tipo, Number(thresholdStr) || 0)
+                setEditingThreshold(false)
+              } catch (err) {
+                window.alert(err instanceof Error ? err.message : 'No se pudo actualizar el mínimo.')
+              }
+            }}
+          >
+            Guardar
+          </button>
+        </div>
+      ) : (
+        <button className="mt-3 flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700" onClick={() => setEditingThreshold(true)}>
+          Mínimo: {item.minimo ?? 'sin configurar'}
+        </button>
+      )}
+
+      <button className="btn-primary mt-4 w-full" onClick={onEntrada}><ArrowUpCircle size={16} /> Registrar entrada</button>
+      <button
+        className="mt-2 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={item.cantidad <= 0}
+        onClick={onEditar}
+      >
+        <Pencil size={12} /> Editar (restar una cantidad)
+      </button>
+    </div>
+  )
+}
+
+function EmpaqueHistory() {
+  const allMovements = useEmpaqueMovements()
+  const empaqueStock = useEmpaqueStock()
+  const [tipoFiltro, setTipoFiltro] = useState<string>('all')
+  const [dia, setDia] = useState(todayISODate())
+  const [verTodo, setVerTodo] = useState(false)
+
+  const shown = useMemo(() => {
+    let rows = allMovements
+    if (tipoFiltro !== 'all') rows = rows.filter(m => m.tipoEmpaque === tipoFiltro)
+    if (!verTodo) rows = rows.filter(m => localISODate(new Date(m.fecha)) === dia)
+    return rows
+  }, [allMovements, tipoFiltro, verTodo, dia])
+
+  const labelFor = (tipo: string) => empaqueStock.find(e => e.tipo === tipo)?.label ?? tipo
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 p-4">
+        <h4 className="font-black">Historial de movimientos — Empaque</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-52">
+            <select className="select !py-2 text-sm" value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}>
+              <option value="all">Todos</option>
+              {empaqueStock.map(e => <option key={e.tipo} value={e.tipo}>{e.label}</option>)}
+            </select>
+          </div>
+          {!verTodo && <div className="w-40"><DatePickerField value={dia} onChange={setDia} /></div>}
+          <button type="button" className="text-xs font-semibold text-amber-700 hover:underline" onClick={() => setVerTodo(v => !v)}>
+            {verTodo ? 'Ver por día' : 'Ver todo el historial'}
+          </button>
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="flex min-h-32 flex-col items-center justify-center p-6 text-center">
+          <Warehouse size={22} className="mb-2 text-stone-300" />
+          <p className="text-sm text-stone-500">{verTodo ? 'Sin movimientos registrados.' : `Sin movimientos el ${DAY_FORMAT.format(new Date(dia + 'T00:00:00'))}.`}</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead>
+              <tr className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                <th className="px-4 pb-2 pt-4">Fecha</th>
+                <th className="px-4 pb-2 pt-4">Tipo de bolsa</th>
+                <th className="px-4 pb-2 pt-4">Movimiento</th>
+                <th className="px-4 pb-2 pt-4">Cantidad</th>
+                <th className="px-4 pb-2 pt-4">Motivo</th>
+                <th className="px-4 pb-2 pt-4">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {shown.map(m => (
+                <tr key={m.id}>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-stone-500">{DATE_TIME_FORMAT.format(new Date(m.fecha))}</td>
+                  <td className="px-4 py-2.5 font-medium text-stone-900">{labelFor(m.tipoEmpaque)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-semibold ${m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {m.tipo === 'entrada' ? <ArrowUpCircle size={13} /> : <ArrowDownCircle size={13} />} {m.tipo === 'entrada' ? 'Entrada' : 'Salida'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">{m.cantidad} unidades</td>
+                  <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
+                  <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmpaqueEntradaModal({ item, onClose }: { item: EmpaqueStockItem, onClose: () => void }) {
+  const [cantidad, setCantidad] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (submitting) return
+    const cantidadNum = Math.floor(Number(cantidad) || 0)
+    if (cantidadNum <= 0) { setError('Ingresa una cantidad mayor que 0.'); return }
+    setSubmitting(true)
+    try {
+      await registrarEntradaEmpaque(item.tipo, cantidadNum, motivo)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar la entrada.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal title={`Entrada de ${item.label}`} onClose={onClose}>
+      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
+      <form onSubmit={handleSubmit}>
+        <label className="block"><span className="label">Cantidad (unidades)</span><input type="number" min="0" step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
+        <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Compra a proveedor..." value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
+        <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
+          {submitting && <Loader2 size={16} className="animate-spin" />} Registrar entrada
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function EmpaqueEditarModal({ item, onClose }: { item: EmpaqueStockItem, onClose: () => void }) {
+  const [cantidad, setCantidad] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (submitting) return
+    const cantidadNum = Math.floor(Number(cantidad) || 0)
+    if (cantidadNum <= 0) { setError('Ingresa una cantidad mayor que 0.'); return }
+    if (cantidadNum > item.cantidad) { setError(`Solo hay ${item.cantidad} unidades disponibles.`); return }
+    setSubmitting(true)
+    try {
+      await registrarSalidaEmpaque(item.tipo, cantidadNum, motivo.trim() || 'Corrección de captura')
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar la corrección.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal title={`Editar stock de ${item.label}`} onClose={onClose}>
+      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
+      <p className="mb-4 text-sm text-stone-500">Stock actual: <b className="text-stone-700">{item.cantidad} unidades</b>. Usa esto cuando se capturó de más en una entrada — ingresa cuánto restar (el exceso), no el total correcto.</p>
+      <form onSubmit={handleSubmit}>
+        <label className="block"><span className="label">Cantidad a restar (unidades)</span><input type="number" min="0" max={item.cantidad} step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
+        <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Corrección de captura" value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
+        <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
+          {submitting && <Loader2 size={16} className="animate-spin" />} Restar del inventario
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
 function FinishedStockCard({ label, lb, bags, onSalida, icon: Icon = PackageCheck, actionLabel = 'Enviar a cafetería' }: { label: string, lb: number, bags: { fullBags: number, remainderGrams: number }, onSalida: () => void, icon?: typeof PackageCheck, actionLabel?: string }) {
   return (
     <div className="card p-5">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-stone-500">{label}</p>
-          <p className="mt-2 text-2xl font-black text-stone-900">{lb.toFixed(2)} lb <span className="text-stone-400">-</span> {bags.fullBags} bolsas</p>
-          <p className="mt-1 text-xs text-stone-500">sobrante acumulado: {bags.remainderGrams.toFixed(1)} g</p>
+          <p className="mt-2 text-2xl font-black text-stone-900">{bags.fullBags} bolsas empacadas <span className="text-base font-semibold text-stone-400">· {lb.toFixed(2)} lb</span></p>
+          <p className="mt-1 text-xs text-stone-500">Café suelto sin empacar (sobrante): {bags.remainderGrams.toFixed(1)} g</p>
         </div>
         <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Icon size={20} /></div>
       </div>
@@ -440,18 +722,24 @@ function RetiroGranoModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-type SalidaTarget = { kind: 'gourmet', tipo: FinishedGourmetType } | { kind: 'blend' }
-
 const NOTA_MAX_LENGTH = 140
+const GOURMET_BAG_LABELS: Record<GourmetBagType, string> = { comercial: 'Comercial', especial: 'Especial' }
 
-function SalidaTerminadoModal({ target, availableFullBags, onClose }: { target: SalidaTarget, availableFullBags: number, onClose: () => void }) {
+function NotaField({ nota, setNota }: { nota: string, setNota: (v: string) => void }) {
+  return (
+    <label className="mt-4 block">
+      <span className="label">Nota (opcional)</span>
+      <input className="input" maxLength={NOTA_MAX_LENGTH} value={nota} onChange={e => setNota(e.target.value)} />
+      <span className="mt-1 block text-right text-xs text-stone-400">{nota.length}/{NOTA_MAX_LENGTH}</span>
+    </label>
+  )
+}
+
+function BlendSalidaModal({ availableFullBags, onClose }: { availableFullBags: number, onClose: () => void }) {
   const [bolsas, setBolsas] = useState('')
   const [nota, setNota] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  const title = target.kind === 'blend' ? 'Enviar bolsas de Blend al mayoreo' : `Enviar Gourmet ${target.tipo === 'gourmetComercial' ? 'Comercial' : 'Especial'} a cafetería`
-  const motivoBase = target.kind === 'blend' ? 'Envío al mayoreo' : 'Envío a cafetería'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -459,14 +747,9 @@ function SalidaTerminadoModal({ target, availableFullBags, onClose }: { target: 
     const bolsasNum = Math.max(0, Math.floor(Number(bolsas) || 0))
     if (bolsasNum <= 0) { setError('Ingresa una cantidad de bolsas mayor que 0.'); return }
     if (bolsasNum > availableFullBags) { setError(`Solo hay ${availableFullBags} bolsas completas disponibles.`); return }
-    const motivo = nota.trim() ? `${motivoBase} — ${nota.trim()}` : motivoBase
     setSubmitting(true)
     try {
-      if (target.kind === 'blend') {
-        await enviarBlendTerminado(bolsasNum, motivo)
-      } else {
-        await descontarGourmetTerminado(target.tipo, bagsToLb(bolsasNum), motivo)
-      }
+      await enviarBlendTerminado(bolsasNum, nota.trim() ? `Envío al mayoreo — ${nota.trim()}` : 'Envío al mayoreo')
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el envío.')
@@ -475,18 +758,103 @@ function SalidaTerminadoModal({ target, availableFullBags, onClose }: { target: 
   }
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title="Enviar bolsas de Blend al mayoreo" onClose={onClose}>
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
       <p className="mb-3 text-sm text-stone-500">Bolsas completas disponibles: <b className="text-stone-700">{availableFullBags}</b></p>
       <form onSubmit={handleSubmit}>
         <label className="block"><span className="label">Bolsas a enviar</span><input type="number" min="0" max={availableFullBags} step="1" autoFocus className="input" value={bolsas} onChange={e => { setError(''); setBolsas(e.target.value) }} /></label>
-        <label className="mt-4 block">
-          <span className="label">Nota (opcional)</span>
-          <input className="input" maxLength={NOTA_MAX_LENGTH} placeholder="" value={nota} onChange={e => setNota(e.target.value)} />
-          <span className="mt-1 block text-right text-xs text-stone-400">{nota.length}/{NOTA_MAX_LENGTH}</span>
-        </label>
+        <NotaField nota={nota} setNota={setNota} />
         <button type="submit" className="btn-primary mt-1 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
           {submitting && <Loader2 size={16} className="animate-spin" />} Registrar envío
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function GourmetSalidaModal({ empacado, onClose }: { empacado: GourmetEmpacado, onClose: () => void }) {
+  const [tipo, setTipo] = useState<GourmetBagType>(empacado.comercial > 0 ? 'comercial' : 'especial')
+  const [bolsas, setBolsas] = useState('')
+  const [nota, setNota] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const disponibles = empacado[tipo]
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (submitting) return
+    const bolsasNum = Math.max(0, Math.floor(Number(bolsas) || 0))
+    if (bolsasNum <= 0) { setError('Ingresa una cantidad de bolsas mayor que 0.'); return }
+    if (bolsasNum > disponibles) { setError(`Solo hay ${disponibles} bolsas ${GOURMET_BAG_LABELS[tipo]} llenas.`); return }
+    setSubmitting(true)
+    try {
+      await descontarGourmetTerminado(tipo, bolsasNum, nota.trim() ? `Envío a cafetería — ${nota.trim()}` : 'Envío a cafetería')
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar el envío.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal title="Enviar Gourmet a cafetería" onClose={onClose}>
+      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
+      <form onSubmit={handleSubmit}>
+        <label className="block"><span className="label">Tipo de bolsa</span>
+          <select className="select" value={tipo} onChange={e => { setError(''); setTipo(e.target.value as GourmetBagType) }}>
+            <option value="comercial">Comercial ({empacado.comercial} llenas)</option>
+            <option value="especial">Especial ({empacado.especial} llenas)</option>
+          </select>
+        </label>
+        <label className="mt-4 block"><span className="label">Bolsas a enviar</span><input type="number" min="0" max={disponibles} step="1" autoFocus className="input" value={bolsas} onChange={e => { setError(''); setBolsas(e.target.value) }} /></label>
+        <NotaField nota={nota} setNota={setNota} />
+        <button type="submit" className="btn-primary mt-1 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
+          {submitting && <Loader2 size={16} className="animate-spin" />} Registrar envío
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function EmpacarSobranteModal({ sueltoGramos, alcanzaPara, empaqueStock, onClose }: { sueltoGramos: number, alcanzaPara: number, empaqueStock: EmpaqueStockItem[], onClose: () => void }) {
+  const [tipo, setTipo] = useState<GourmetBagType>('comercial')
+  const [bolsas, setBolsas] = useState(String(alcanzaPara))
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const vacias = empaqueStock.find(e => e.tipo === tipo)?.cantidad ?? 0
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (submitting) return
+    const bolsasNum = Math.max(0, Math.floor(Number(bolsas) || 0))
+    if (bolsasNum <= 0) { setError('Ingresa una cantidad de bolsas mayor que 0.'); return }
+    if (bolsasNum > alcanzaPara) { setError(`El café suelto solo alcanza para ${alcanzaPara} bolsa${alcanzaPara === 1 ? '' : 's'}.`); return }
+    if (bolsasNum > vacias) { setError(`Solo hay ${vacias} bolsas ${GOURMET_BAG_LABELS[tipo]} vacías en bodega.`); return }
+    setSubmitting(true)
+    try {
+      await empacarSobranteGourmet(tipo, bolsasNum, '')
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar el empaque.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal title="Empacar café suelto (sobrante)" onClose={onClose}>
+      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
+      <p className="mb-4 text-sm text-stone-500">Hay <b className="text-stone-700">{sueltoGramos.toFixed(1)} g</b> de café suelto, que alcanza para <b className="text-stone-700">{alcanzaPara}</b> bolsa{alcanzaPara === 1 ? '' : 's'} de {BAG_GRAMS} g. Regístralo cuando ya las hayan llenado: pasan a bolsas llenas y se descuenta la bolsa vacía.</p>
+      <form onSubmit={handleSubmit}>
+        <label className="block"><span className="label">Tipo de bolsa</span>
+          <select className="select" value={tipo} onChange={e => { setError(''); setTipo(e.target.value as GourmetBagType) }}>
+            {(['comercial', 'especial'] as const).map(t => (
+              <option key={t} value={t}>{GOURMET_BAG_LABELS[t]} ({empaqueStock.find(e => e.tipo === t)?.cantidad ?? 0} vacías)</option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-4 block"><span className="label">Bolsas llenadas</span><input type="number" min="1" max={alcanzaPara} step="1" autoFocus className="input" value={bolsas} onChange={e => { setError(''); setBolsas(e.target.value) }} /></label>
+        <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
+          {submitting && <Loader2 size={16} className="animate-spin" />} Registrar empaque
         </button>
       </form>
     </Modal>
