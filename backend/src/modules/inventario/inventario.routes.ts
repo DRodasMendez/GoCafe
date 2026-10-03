@@ -85,6 +85,23 @@ inventarioRouter.patch(
   })
 )
 
+// Mínimo del café en grano: uno solo, sobre el total de los tres tuestes.
+inventarioRouter.get(
+  '/grano-cafeteria/umbral',
+  asyncHandler(async (_req, res) => {
+    res.json({ minimoLb: await inventarioService.getGranoMinimo() })
+  })
+)
+
+inventarioRouter.patch(
+  '/grano-cafeteria/umbral',
+  asyncHandler(async (req, res) => {
+    const { minimoLb } = z.object({ minimoLb: z.number().min(0) }).parse(req.body)
+    await inventarioService.updateGranoMinimo(minimoLb)
+    res.status(204).end()
+  })
+)
+
 inventarioRouter.post(
   '/grano-cafeteria/:tipo/salida',
   asyncHandler(async (req, res) => {

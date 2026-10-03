@@ -250,7 +250,7 @@ model ProduccionBlendTueste {
 model InventarioStock {
   material   String   @id
   cantidadLb Decimal  @default(0) @map("cantidad_lb") @db.Decimal(10, 2)
-  /** Solo aplica a materia prima (pergamino/oro/natural); null en el resto. */
+  /** Mínimo para la alerta de pocas existencias (solo materia prima); null en el resto. El café en grano usa un mínimo sobre el total, ver Configuracion. */
   minimoLb   Decimal? @map("minimo_lb") @db.Decimal(10, 2)
   updatedAt  DateTime @updatedAt @map("updated_at")
 
@@ -317,6 +317,15 @@ model InventarioEmpaqueMovimiento {
 
   @@index([tipoEmpaque, fecha])
   @@map("inventario_empaque_movimientos")
+}
+
+/** Valores de configuración sueltos (ej. mínimo de café en grano para la alerta). Una fila por clave. */
+model Configuracion {
+  clave     String   @id
+  valor     Decimal  @db.Decimal(10, 2)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("configuracion")
 }
 
 // ---------------------------------------------------------------------------

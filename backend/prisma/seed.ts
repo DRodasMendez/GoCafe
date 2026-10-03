@@ -1,7 +1,13 @@
 import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import { PrismaClient } from '@prisma/client'
-import { ALL_MATERIALS, RAW_MATERIALS } from '../src/modules/inventario/inventario.constants'
+import {
+  ALL_MATERIALS,
+  GRANO_MINIMO_CLAVE,
+  GRANO_MINIMO_DEFAULT_LB,
+  MATERIA_PRIMA_MINIMO_DEFAULT_LB,
+  RAW_MATERIALS,
+} from '../src/modules/inventario/inventario.constants'
 import { EMPAQUE_TYPES } from '../src/modules/inventario/empaque.constants'
 
 const prisma = new PrismaClient()
@@ -23,10 +29,15 @@ async function seedUsuario() {
   console.log(`Usuario "${username}" listo (contraseña actualizada si ya existía).`)
 }
 
-/** Crea la fila de cada material si no existe todavía, con cantidad 0 (y el mínimo de 25 lb en materia prima, igual que el default de la versión local). No pisa cantidades ya cargadas. */
+/** Crea la fila de cada material si no existe todavía, con cantidad 0 (y el mínimo de 25 lb en materia prima). No pisa cantidades ya cargadas. */
 async function seedInventarioStock() {
+  await prisma.configuracion.upsert({
+    where: { clave: GRANO_MINIMO_CLAVE },
+    create: { clave: GRANO_MINIMO_CLAVE, valor: GRANO_MINIMO_DEFAULT_LB },
+    update: {},
+  })
   for (const material of ALL_MATERIALS) {
-    const minimoLb = (RAW_MATERIALS as readonly string[]).includes(material) ? 25 : null
+    const minimoLb = (RAW_MATERIALS as readonly string[]).includes(material) ? MATERIA_PRIMA_MINIMO_DEFAULT_LB : null
     await prisma.inventarioStock.upsert({
       where: { material },
       create: { material, cantidadLb: 0, minimoLb },

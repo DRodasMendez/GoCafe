@@ -87,6 +87,33 @@ describe('PATCH /api/inventario/materia-prima/:material/umbral', () => {
   })
 })
 
+describe('alerta de café en grano (una sola, sobre el total de los tueste)', () => {
+  const alertaGrano = async () => {
+    const res = await request(app).get('/api/inventario/alertas').set(authHeader(token))
+    return res.body.filter((a: any) => a.material === 'grano_cafeteria')
+  }
+
+  it('no alerta aunque un tueste esté en 0, si el total supera el mínimo (5 lb por defecto)', async () => {
+    await prisma.inventarioStock.createMany({ data: [{ material: 'grano_claro', cantidadLb: 10 }, { material: 'grano_medio', cantidadLb: 4 }] })
+    expect(await alertaGrano()).toHaveLength(0)
+  })
+
+  it('una sola alerta cuando el total baja del mínimo', async () => {
+    await prisma.inventarioStock.createMany({ data: [{ material: 'grano_claro', cantidadLb: 2 }, { material: 'grano_medio', cantidadLb: 1.5 }] })
+    expect(await alertaGrano()).toHaveLength(1)
+  })
+
+  it('el mínimo se puede cambiar', async () => {
+    await prisma.inventarioStock.create({ data: { material: 'grano_claro', cantidadLb: 8 } })
+    const res = await request(app).patch('/api/inventario/grano-cafeteria/umbral').set(authHeader(token)).send({ minimoLb: 10 })
+    expect(res.status).toBe(204)
+
+    const umbral = await request(app).get('/api/inventario/grano-cafeteria/umbral').set(authHeader(token))
+    expect(umbral.body.minimoLb).toBe(10)
+    expect(await alertaGrano()).toHaveLength(1)
+  })
+})
+
 describe('salidas de producto terminado / grano reservado', () => {
   it('descuenta grano de cafetería reservado y falla si no alcanza', async () => {
     await prisma.inventarioStock.create({ data: { material: 'grano_medio', cantidadLb: 5 } })

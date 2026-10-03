@@ -14,6 +14,7 @@ const TABLES = [
   'inventario_empaque_movimientos',
   'inventario_empaque_stock',
   'inventario_gourmet_empacado',
+  'configuracion',
   'usuarios',
 ]
 

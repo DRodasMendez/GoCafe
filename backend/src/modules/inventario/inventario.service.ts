@@ -2,7 +2,16 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { prisma } from '../../lib/prisma'
 import { AppError } from '../../errors'
 import { BAG_GRAMS, LB_TO_GRAMS, bagsEquivalent, bagsToLb } from '../../utils/production'
-import { ALL_MATERIALS, RAW_MATERIALS, STOCK_LABELS, type RawMaterialType, type StockMaterial } from './inventario.constants'
+import {
+  ALL_MATERIALS,
+  GRANO_MATERIALS,
+  GRANO_MINIMO_CLAVE,
+  GRANO_MINIMO_DEFAULT_LB,
+  RAW_MATERIALS,
+  STOCK_LABELS,
+  type RawMaterialType,
+  type StockMaterial,
+} from './inventario.constants'
 import { consumirEmpaque } from './empaque.service'
 
 /** Acepta tanto el cliente normal como uno dentro de una transacción, para poder componer varios movimientos como una sola operación atómica (ver inventario y producción). */
@@ -84,11 +93,16 @@ export async function getRawMaterialStock(material: RawMaterialType, db: Db = pr
 }
 
 export async function getInventoryAlerts() {
-  const rows = await prisma.inventarioStock.findMany({ where: { material: { in: [...RAW_MATERIALS] } } })
-  const alerts: { material: RawMaterialType; title: string; message: string }[] = []
+  const rows = await prisma.inventarioStock.findMany({ where: { material: { in: [...RAW_MATERIALS, ...GRANO_MATERIALS] } } })
+  const cantidad = (material: string) => {
+    const row = rows.find(r => r.material === material)
+    return row ? toNumber(row.cantidadLb) : 0
+  }
+  const alerts: { material: RawMaterialType | 'grano_cafeteria'; title: string; message: string }[] = []
+
   for (const material of RAW_MATERIALS) {
     const row = rows.find(r => r.material === material)
-    const current = row ? toNumber(row.cantidadLb) : 0
+    const current = cantidad(material)
     const min = row?.minimoLb ? toNumber(row.minimoLb) : 0
     if (current < min) {
       const label = STOCK_LABELS[material]
@@ -99,7 +113,32 @@ export async function getInventoryAlerts() {
       })
     }
   }
+
+  // Café en grano: una sola alerta sobre el total de los tres tuestes, no una por tueste.
+  const granoTotal = GRANO_MATERIALS.reduce((sum, m) => sum + cantidad(m), 0)
+  const granoMin = await getGranoMinimo()
+  if (granoTotal < granoMin) {
+    alerts.push({
+      material: 'grano_cafeteria',
+      title: 'Poco café en grano para cafetería',
+      message: `Quedan ${granoTotal.toFixed(2)} lb de café en grano (todos los tuestes), por debajo del mínimo de ${granoMin.toFixed(2)} lb.`,
+    })
+  }
   return alerts
+}
+
+export async function getGranoMinimo(): Promise<number> {
+  const row = await prisma.configuracion.findUnique({ where: { clave: GRANO_MINIMO_CLAVE } })
+  return row ? toNumber(row.valor) : GRANO_MINIMO_DEFAULT_LB
+}
+
+export async function updateGranoMinimo(minimoLb: number) {
+  const valor = Math.max(0, minimoLb)
+  await prisma.configuracion.upsert({
+    where: { clave: GRANO_MINIMO_CLAVE },
+    create: { clave: GRANO_MINIMO_CLAVE, valor },
+    update: { valor },
+  })
 }
 
 export function getMovimientos(filter?: { material?: StockMaterial; desde?: Date; hasta?: Date }) {

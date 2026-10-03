@@ -34,6 +34,16 @@ export const STOCK_LABELS: Record<StockMaterial, string> = {
   blend_bolsas: 'Blend (bolsas de 350 g)',
 }
 
+/** Café en grano reservado para cafetería, uno por tipo de tueste. */
+export const GRANO_MATERIALS = ['grano_claro', 'grano_medio', 'grano_oscuro'] as const
+export type GranoMaterial = (typeof GRANO_MATERIALS)[number]
+
+export const MATERIA_PRIMA_MINIMO_DEFAULT_LB = 25
+
+/** El café en grano tiene una sola alerta, sobre el total de los tres tuestes (ver tabla configuracion). */
+export const GRANO_MINIMO_CLAVE = 'grano_cafeteria_minimo_lb'
+export const GRANO_MINIMO_DEFAULT_LB = 5
+
 export function granoMaterial(tipo: RoastType): StockMaterial {
   return `grano_${tipo}` as StockMaterial
 }

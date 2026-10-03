@@ -14,11 +14,13 @@ import {
   enviarBlendTerminado,
   getEmpaqueAlerts,
   getInventoryAlerts,
+  granoTotalLb,
   registrarEntradaEmpaque,
   registrarEntradaMateriaPrima,
   registrarSalidaEmpaque,
   registrarSalidaMateriaPrima,
   updateEmpaqueUmbral,
+  updateGranoThreshold,
   updateThreshold,
   useEmpaqueMovements,
   useEmpaqueStock,
@@ -93,7 +95,7 @@ export default function InventarioPage() {
       ) : (
         <div className="flex gap-2 text-sm font-medium text-emerald-700">
           <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
-          <span>Pergamino, Oro y Natural están por encima del mínimo de 25 lb, y las bolsas con mínimo configurado también.</span>
+          <span>Sin alertas: materia prima, café en grano y bolsas están por encima de su mínimo.</span>
         </div>
       )}
 
@@ -126,6 +128,9 @@ export default function InventarioPage() {
 
           {tab === 'grano-cafeteria' && (
             <>
+              <div className="max-w-md">
+                <GranoTotalCard totalLb={granoTotalLb(stock)} thresholdLb={thresholds.granoCafeteria} />
+              </div>
               <p className="text-sm text-stone-500">Separado por tipo de tueste.</p>
               <div className="grid gap-4 md:grid-cols-3">
                 {ROAST_TYPES.map(tipo => (
@@ -250,6 +255,55 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean, on
   )
 }
 
+/** Texto "Mínimo: …" que al hacer clic se vuelve un campo editable para cambiar el umbral de alerta. */
+function MinimoEditor({ value, display, onSave }: { value: number, display: string, onSave: (v: number) => Promise<void> }) {
+  const [editing, setEditing] = useState(false)
+  const [str, setStr] = useState(String(value))
+
+  if (!editing) {
+    return (
+      <button className="mt-3 flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700" onClick={() => { setStr(String(value)); setEditing(true) }}>
+        Mínimo: {display}
+      </button>
+    )
+  }
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <input type="number" min="0" step="1" autoFocus className="input" value={str} onChange={e => setStr(e.target.value)} />
+      <button
+        className="btn-secondary shrink-0 !px-3"
+        onClick={async () => {
+          try {
+            await onSave(Number(str) || 0)
+            setEditing(false)
+          } catch (err) {
+            window.alert(err instanceof Error ? err.message : 'No se pudo actualizar el mínimo.')
+          }
+        }}
+      >
+        Guardar
+      </button>
+    </div>
+  )
+}
+
+/** Total de café en grano (los tres tuestes) con su mínimo: es la única alerta de grano. */
+function GranoTotalCard({ totalLb, thresholdLb }: { totalLb: number, thresholdLb: number }) {
+  const low = totalLb < thresholdLb
+  return (
+    <div className={`card p-5 ${low ? 'border-red-300' : ''}`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-stone-500">Total en grano (todos los tuestes)</p>
+          <p className={`mt-2 text-3xl font-black ${low ? 'text-red-600' : 'text-stone-900'}`}>{totalLb.toFixed(2)} <span className="text-base font-semibold text-stone-400">lb</span></p>
+        </div>
+        <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Coffee size={20} /></div>
+      </div>
+      <MinimoEditor value={thresholdLb} display={`${thresholdLb.toFixed(2)} lb`} onSave={updateGranoThreshold} />
+    </div>
+  )
+}
+
 function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, onThresholdChange }: {
   material: RawMaterialType
   stockLb: number
@@ -258,8 +312,6 @@ function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, 
   onEditar: () => void
   onThresholdChange: (v: number) => Promise<void>
 }) {
-  const [editingThreshold, setEditingThreshold] = useState(false)
-  const [thresholdStr, setThresholdStr] = useState(String(thresholdLb))
   const low = stockLb < thresholdLb
 
   return (
@@ -272,28 +324,7 @@ function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, 
         <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Coffee size={20} /></div>
       </div>
 
-      {editingThreshold ? (
-        <div className="mt-3 flex items-center gap-2">
-          <input type="number" min="0" step="1" className="input" value={thresholdStr} onChange={e => setThresholdStr(e.target.value)} />
-          <button
-            className="btn-secondary shrink-0 !px-3"
-            onClick={async () => {
-              try {
-                await onThresholdChange(Number(thresholdStr) || 0)
-                setEditingThreshold(false)
-              } catch (err) {
-                window.alert(err instanceof Error ? err.message : 'No se pudo actualizar el mínimo.')
-              }
-            }}
-          >
-            Guardar
-          </button>
-        </div>
-      ) : (
-        <button className="mt-3 flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700" onClick={() => setEditingThreshold(true)}>
-          Mínimo: {thresholdLb.toFixed(2)} lb
-        </button>
-      )}
+      <MinimoEditor value={thresholdLb} display={`${thresholdLb.toFixed(2)} lb`} onSave={onThresholdChange} />
 
       <button className="btn-primary mt-4 w-full" onClick={onEntrada}><ArrowUpCircle size={16} /> Registrar entrada</button>
       <button
@@ -308,8 +339,6 @@ function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, 
 }
 
 function EmpaqueCard({ item, onEntrada, onEditar }: { item: EmpaqueStockItem, onEntrada: () => void, onEditar: () => void }) {
-  const [editingThreshold, setEditingThreshold] = useState(false)
-  const [thresholdStr, setThresholdStr] = useState(String(item.minimo ?? 0))
   const low = item.minimo != null && item.cantidad < item.minimo
 
   return (
@@ -322,28 +351,7 @@ function EmpaqueCard({ item, onEntrada, onEditar }: { item: EmpaqueStockItem, on
         <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Package size={20} /></div>
       </div>
 
-      {editingThreshold ? (
-        <div className="mt-3 flex items-center gap-2">
-          <input type="number" min="0" step="1" className="input" value={thresholdStr} onChange={e => setThresholdStr(e.target.value)} />
-          <button
-            className="btn-secondary shrink-0 !px-3"
-            onClick={async () => {
-              try {
-                await updateEmpaqueUmbral(item.tipo, Number(thresholdStr) || 0)
-                setEditingThreshold(false)
-              } catch (err) {
-                window.alert(err instanceof Error ? err.message : 'No se pudo actualizar el mínimo.')
-              }
-            }}
-          >
-            Guardar
-          </button>
-        </div>
-      ) : (
-        <button className="mt-3 flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700" onClick={() => setEditingThreshold(true)}>
-          Mínimo: {item.minimo ?? 'sin configurar'}
-        </button>
-      )}
+      <MinimoEditor value={item.minimo ?? 0} display={item.minimo != null ? `${item.minimo} bolsas` : 'sin configurar'} onSave={v => updateEmpaqueUmbral(item.tipo, v)} />
 
       <button className="btn-primary mt-4 w-full" onClick={onEntrada}><ArrowUpCircle size={16} /> Registrar entrada</button>
       <button

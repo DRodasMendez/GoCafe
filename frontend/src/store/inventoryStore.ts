@@ -48,6 +48,8 @@ interface Thresholds {
   pergamino: number
   oro: number
   natural: number
+  /** Un solo mínimo para el total de café en grano (los tres tuestes sumados). */
+  granoCafeteria: number
 }
 
 interface InventoryState {
@@ -71,7 +73,7 @@ export interface InventoryMovement {
 function emptyState(): InventoryState {
   return {
     stock: { pergamino: 0, oro: 0, natural: 0, granoCafeteria: { claro: 0, medio: 0, oscuro: 0 }, gourmetLb: 0, blendFinishedLb: 0 },
-    thresholds: { pergamino: 25, oro: 25, natural: 25 },
+    thresholds: { pergamino: 25, oro: 25, natural: 25, granoCafeteria: 5 },
   }
 }
 
@@ -187,14 +189,16 @@ function notify() {
 }
 
 async function refresh(): Promise<void> {
-  const [stockRows, movRows, empaqueStockRows, empaqueMovRows, empacadoRow] = await Promise.all([
+  const [stockRows, movRows, empaqueStockRows, empaqueMovRows, empacadoRow, granoUmbral] = await Promise.all([
     apiFetch<StockDto[]>('/api/inventario/stock'),
     apiFetch<MovimientoDto[]>('/api/inventario/movimientos'),
     apiFetch<EmpaqueStockItem[]>('/api/inventario/empaque/stock'),
     apiFetch<EmpaqueMovimientoDto[]>('/api/inventario/empaque/movimientos'),
     apiFetch<GourmetEmpacado>('/api/inventario/gourmet/empacado'),
+    apiFetch<{ minimoLb: number }>('/api/inventario/grano-cafeteria/umbral'),
   ])
   state = buildState(stockRows)
+  state.thresholds.granoCafeteria = granoUmbral.minimoLb
   movements = movRows.map(fromMovementDto)
   empaqueStock = empaqueStockRows
   empaqueMovements = empaqueMovRows.map(fromEmpaqueMovementDto)
@@ -308,6 +312,16 @@ export async function descontarGranoCafeteria(tipo: RoastType, cantidadLb: numbe
   await refresh()
 }
 
+/** Mínimo sobre el total de café en grano (los tres tuestes sumados). */
+export async function updateGranoThreshold(value: number): Promise<void> {
+  await apiFetch<void>(`/api/inventario/grano-cafeteria/umbral`, { method: 'PATCH', body: { minimoLb: Math.max(0, value) } })
+  await refresh()
+}
+
+export function granoTotalLb(stock: Stock): number {
+  return stock.granoCafeteria.claro + stock.granoCafeteria.medio + stock.granoCafeteria.oscuro
+}
+
 // ---------------------------------------------------------------------------
 // Producto terminado: Gourmet. Un solo café, embolsado durante la producción en bolsas Comercial
 // o Especial: se cuentan las bolsas llenas por tipo, y lo que no se embolsó es café suelto.
@@ -351,13 +365,13 @@ export async function enviarBlendTerminado(bolsas: number, motivo: string): Prom
 }
 
 // ---------------------------------------------------------------------------
-// Mínimos y alertas (solo materia prima: Pergamino, Oro, Natural)
+// Mínimos y alertas: materia prima (Pergamino, Oro, Natural) y café en grano de cafetería
 // ---------------------------------------------------------------------------
 
 export type AlertSeverity = 'critico'
 
 export interface InventoryAlert {
-  material: RawMaterialType
+  material: RawMaterialType | 'granoCafeteria'
   severity: AlertSeverity
   title: string
   message: string
@@ -369,7 +383,7 @@ export function getInventoryAlerts(): InventoryAlert[] {
     const current = state.stock[material]
     const min = state.thresholds[material]
     if (current < min) {
-      const label = material.charAt(0).toUpperCase() + material.slice(1)
+      const label = STOCK_LABELS[material]
       alerts.push({
         material,
         severity: 'critico',
@@ -377,6 +391,16 @@ export function getInventoryAlerts(): InventoryAlert[] {
         message: `Quedan ${current.toFixed(2)} lb de ${label}, por debajo del mínimo de ${min.toFixed(2)} lb.`,
       })
     }
+  }
+  // Café en grano: una sola alerta sobre el total de los tres tuestes, no una por tueste.
+  const grano = granoTotalLb(state.stock)
+  if (grano < state.thresholds.granoCafeteria) {
+    alerts.push({
+      material: 'granoCafeteria',
+      severity: 'critico',
+      title: 'Poco café en grano para cafetería',
+      message: `Quedan ${grano.toFixed(2)} lb de café en grano (todos los tuestes), por debajo del mínimo de ${state.thresholds.granoCafeteria.toFixed(2)} lb.`,
+    })
   }
   return alerts
 }
@@ -421,7 +445,7 @@ export function getEmpaqueAlerts(): EmpaqueAlert[] {
       alerts.push({
         tipo: item.tipo,
         title: `Pocas bolsas de ${item.label}`,
-        message: `Quedan ${item.cantidad} unidades, por debajo del mínimo de ${item.minimo}.`,
+        message: `Quedan ${item.cantidad} bolsas de ${item.label}, por debajo del mínimo de ${item.minimo}.`,
       })
     }
   }

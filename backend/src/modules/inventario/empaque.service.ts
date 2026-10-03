@@ -82,7 +82,7 @@ export async function getEmpaqueAlerts() {
       alerts.push({
         tipo,
         title: `Pocas bolsas de ${label}`,
-        message: `Quedan ${row.cantidad} unidades, por debajo del mínimo de ${row.minimo}.`,
+        message: `Quedan ${row.cantidad} bolsas de ${label}, por debajo del mínimo de ${row.minimo}.`,
       })
     }
   }

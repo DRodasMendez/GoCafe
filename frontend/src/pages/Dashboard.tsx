@@ -4,14 +4,15 @@ import { Link } from 'react-router-dom'
 import { useClients } from '../store/clientsStore'
 import { useOrders } from '../store/ordersStore'
 import { useAllProductions } from '../store/productionStore'
-import { bagsEquivalent, getInventoryAlerts, useGourmetEmpacado, useInventory } from '../store/inventoryStore'
+import { bagsEquivalent, getEmpaqueAlerts, getInventoryAlerts, useEmpaqueStock, useGourmetEmpacado, useInventory } from '../store/inventoryStore'
 
 export default function Dashboard() {
   const clients = useClients()
   const orders = useOrders()
   const productions = useAllProductions()
-  const { stock } = useInventory()
-  const alerts = useMemo(() => getInventoryAlerts(), [stock])
+  const { stock, thresholds } = useInventory()
+  const empaqueStock = useEmpaqueStock()
+  const alerts = useMemo(() => [...getInventoryAlerts(), ...getEmpaqueAlerts()], [stock, thresholds, empaqueStock])
 
   const ordersInProgress = orders.filter(o => o.status !== 'Finalizado').length
   const rawMaterialLb = stock.pergamino + stock.oro + stock.natural
