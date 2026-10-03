@@ -4,7 +4,7 @@ import { asyncHandler } from '../../middleware/asyncHandler'
 import { AppError } from '../../errors'
 import * as inventarioService from './inventario.service'
 import * as empaqueService from './empaque.service'
-import { RAW_MATERIALS, type RawMaterialType } from './inventario.constants'
+import { ALL_MATERIALS, RAW_MATERIALS, type RawMaterialType, type StockMaterial } from './inventario.constants'
 import { EMPAQUE_TYPES, type EmpaqueType } from './empaque.constants'
 
 export const inventarioRouter = Router()
@@ -43,9 +43,12 @@ inventarioRouter.get(
   '/movimientos',
   asyncHandler(async (req, res) => {
     const { material, desde, hasta } = req.query
+    if (typeof material === 'string' && !(ALL_MATERIALS as string[]).includes(material)) {
+      throw new AppError(`Material inválido: ${material}.`)
+    }
     res.json(
       await inventarioService.getMovimientos({
-        material: typeof material === 'string' ? (material as any) : undefined,
+        material: typeof material === 'string' ? (material as StockMaterial) : undefined,
         desde: typeof desde === 'string' ? new Date(desde) : undefined,
         hasta: typeof hasta === 'string' ? new Date(hasta) : undefined,
       })

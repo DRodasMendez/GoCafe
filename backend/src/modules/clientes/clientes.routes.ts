@@ -6,9 +6,13 @@ import * as clientesService from './clientes.service'
 export const clientesRouter = Router()
 
 const clienteInputSchema = z.object({
-  nombre: z.string().min(1),
-  ciudad: z.string().min(1),
-  telefono: z.string().min(1),
+  nombre: z.string().trim().min(1).max(120),
+  ciudad: z.string().trim().min(1).max(120),
+  // Teléfono de Guatemala: 8 dígitos (el frontend lo guarda como "1234-5678").
+  telefono: z
+    .string()
+    .trim()
+    .refine(v => /^[\d\s-]+$/.test(v) && v.replace(/\D/g, '').length === 8, { message: 'El teléfono debe tener 8 dígitos.' }),
 })
 
 clientesRouter.get(

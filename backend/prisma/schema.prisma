@@ -94,6 +94,8 @@ model Orden {
 
   totalPrice Decimal @default(0) @map("total_price") @db.Decimal(10, 2)
   pagado     Boolean @default(false)
+  /** Cuándo se marcó como pagada — "Cobrado en <mes>" se calcula con esta fecha, no con la de finalización. */
+  pagadoAt   DateTime? @map("pagado_at")
 
   /** Gramaje de bolsa de ESTA orden (el cliente puede pedir un gramaje distinto al estándar de 350 g). Se usa para calcular bolsas completas/sobrante en el paso de Empaque. */
   bagSizeGrams         Decimal @default(350) @map("bag_size_grams") @db.Decimal(10, 2)
@@ -115,6 +117,7 @@ model Orden {
 
   roasts OrdenTueste[]
 
+  @@index([clienteId])
   @@map("ordenes")
 }
 

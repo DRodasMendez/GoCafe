@@ -73,6 +73,8 @@ export interface Order {
   totalPrice: number
   /** Si ya se cobró la factura de esta orden (se puede marcar desde Facturación). */
   pagado: boolean
+  /** Cuándo se marcó como pagada (null si no lo está). */
+  pagadoAt: string | null
   /** Gramaje de bolsa de ESTA orden — el cliente puede pedir un gramaje distinto al estándar de 350 g. */
   bagSizeGrams: number
   actualFullBags: number

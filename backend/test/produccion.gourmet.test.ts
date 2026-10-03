@@ -141,6 +141,34 @@ describe('POST /api/produccion/gourmet/:id/finalizar', () => {
     expect(lote.body.status).toBe('en_proceso')
   })
 
+  it('dos "finalizar" simultáneos: solo uno se aplica y el inventario se descuenta una sola vez', async () => {
+    const id = await startLote(30)
+    const [a, b] = await Promise.all([
+      request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token)),
+      request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token)),
+    ])
+    expect([a.status, b.status].sort()).toEqual([200, 400])
+    const stock = await prisma.inventarioStock.findUnique({ where: { material: 'pergamino' } })
+    expect(stock?.cantidadLb.toNumber()).toBe(70) // 100 - 30, una sola vez
+  })
+
+  it('no permite modificar un lote ya finalizado', async () => {
+    const id = await startLote(50)
+    await request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token))
+    const res = await request(app).patch(`/api/produccion/gourmet/${id}`).set(authHeader(token)).send({ actualFullBags: 99 })
+    expect(res.status).toBe(400)
+    const lote = await request(app).get(`/api/produccion/gourmet/${id}`).set(authHeader(token))
+    expect(lote.body.actualFullBags).toBe(0)
+  })
+
+  it('rechaza pesos negativos y pasos inexistentes', async () => {
+    const id = await startLote(50)
+    const negativo = await request(app).patch(`/api/produccion/gourmet/${id}`).set(authHeader(token)).send({ molidoWeightLb: -5 })
+    expect(negativo.status).toBe(400)
+    const paso = await request(app).patch(`/api/produccion/gourmet/${id}`).set(authHeader(token)).send({ currentStepName: 'Inventado' })
+    expect(paso.status).toBe(400)
+  })
+
   it('no permite finalizar dos veces el mismo lote', async () => {
     const id = await startLote(50)
     await request(app).post(`/api/produccion/gourmet/${id}/finalizar`).set(authHeader(token))

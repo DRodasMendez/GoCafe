@@ -50,7 +50,7 @@ Antes de correrlos, una sola vez por máquina:
 ```bash
 cp .env.test.example .env.test
 # crea la base de datos de test (usa el mismo Postgres del docker-compose de la raíz)
-docker exec proyectoa-db-1 psql -U gocafe -d postgres -c "CREATE DATABASE gocafe_test OWNER gocafe;"
-DATABASE_URL="postgresql://gocafe:gocafe@localhost:5433/gocafe_test?schema=public" npx prisma migrate deploy
+docker exec gocafe-db-1 psql -U gocafe -d postgres -c "CREATE DATABASE gocafe_test OWNER gocafe;"
+DATABASE_URL="postgresql://gocafe:gocafe@localhost:5432/gocafe_test?schema=public" npx prisma migrate deploy
 ```
 Después de eso, `npm test` funciona sin nada más — cada test limpia (`TRUNCATE ... RESTART IDENTITY`) la base de test antes de correr, así que el orden no importa y los folios (`GC-0001`, etc.) son deterministas. Cuando el esquema cambie, hay que volver a correr el `prisma migrate deploy` de arriba apuntando a `gocafe_test`.

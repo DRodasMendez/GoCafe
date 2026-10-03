@@ -12,6 +12,7 @@ import {
 } from '../store/productionStore'
 import { getRawMaterialStock, useInventory } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
+import { Field, SectionTitle, Stat } from '../components/FormParts'
 
 type RoastForm = { id: number, weightLb: number | '', notes: string }
 const emptyRoast = (id: number): RoastForm => ({ id, weightLb: '', notes: '' })
@@ -269,8 +270,9 @@ function GourmetForm({ id }: { id?: string }) {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Fecha"><DatePickerField value={fecha} onChange={setFecha} /></Field>
-            <Field label="Pergamino a usar (lb)"><input type="number" min="0" step="0.01" className="input" value={pergaminoUsedStr} onChange={e => { setPageError(''); setPergaminoUsedStr(e.target.value) }} /></Field>
+            <Field label="Pergamino a usar (lb)"><input type="number" min="0" step="0.01" className="input disabled:bg-stone-100 disabled:text-stone-500" disabled={!isNewDraft} value={pergaminoUsedStr} onChange={e => { setPageError(''); setPergaminoUsedStr(e.target.value) }} /></Field>
           </div>
+          {!isNewDraft && <p className="mt-2 text-xs text-stone-500">La cantidad de Pergamino se fija al iniciar el lote y ya no se puede cambiar.</p>}
           {isNewDraft && (
             <button className="btn-primary mt-5 disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting} onClick={handleStart}>
               {submitting ? <Loader2 size={17} className="animate-spin" /> : <Coffee size={17} />} Confirmar e iniciar producción
@@ -451,12 +453,6 @@ function GourmetForm({ id }: { id?: string }) {
   )
 }
 
-function Field({ label, children }: { label: string, children: React.ReactNode }) {
-  return <label className="block"><span className="label">{label}</span>{children}</label>
-}
-function SectionTitle({ title, subtitle }: { title: string, subtitle: string }) {
-  return <div className="mb-6"><h3 className="text-lg font-black">{title}</h3><p className="mt-1 text-sm text-stone-500">{subtitle}</p></div>
-}
-function Stat({ label, value }: { label: string, value: string }) {
-  return <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</p><p className="mt-1 text-xl font-black text-stone-900">{value}</p></div>
-}
+
+
+

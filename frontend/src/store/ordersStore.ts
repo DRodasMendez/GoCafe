@@ -57,6 +57,7 @@ interface OrdenDto {
   createdAt: string
   updatedAt: string
   finalizedAt: string | null
+  pagadoAt: string | null
   roasts: RoastDto[]
 }
 
@@ -126,6 +127,7 @@ function fromDto(dto: OrdenDto): Order {
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
     finalizedAt: dto.finalizedAt,
+    pagadoAt: dto.pagadoAt,
   }
 }
 
@@ -209,7 +211,7 @@ export function getClientOrders(clientId: string): Order[] {
   return orders.filter(o => o.clientId === clientId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-type CreateOrderInput = Omit<Order, 'id' | 'orderNo' | 'status' | 'createdAt' | 'updatedAt' | 'finalizedAt' | 'pagado'>
+type CreateOrderInput = Omit<Order, 'id' | 'orderNo' | 'status' | 'createdAt' | 'updatedAt' | 'finalizedAt' | 'pagado' | 'pagadoAt'>
 
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const dto = await apiFetch<OrdenDto>('/api/ordenes', {

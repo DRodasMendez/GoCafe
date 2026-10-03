@@ -13,6 +13,7 @@ import {
 } from '../store/productionStore'
 import { useInventory } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
+import { Field, SectionTitle, Stat } from '../components/FormParts'
 
 type RoastForm = { id: number, weightLb: number | '', notes: string }
 const emptyRoast = (id: number): RoastForm => ({ id, weightLb: '', notes: '' })
@@ -269,9 +270,9 @@ function BlendForm({ id }: { id?: string }) {
           <SectionTitle title="1. Planificación del Blend" subtitle="Indica cuánto Blend deseas producir; el sistema calcula la materia prima necesaria según la fórmula fija (35% / 65%)." />
           <div className="grid gap-4 md:grid-cols-3">
             <Field label="Fecha"><DatePickerField value={fecha} onChange={setFecha} /></Field>
-            <Field label="Cantidad de Blend deseada (lb)"><input type="number" min="0" step="0.01" className="input" value={cantidadStr} onChange={e => { setPageError(''); setCantidadStr(e.target.value) }} /></Field>
+            <Field label="Cantidad de Blend deseada (lb)"><input type="number" min="0" step="0.01" className="input disabled:bg-stone-100 disabled:text-stone-500" disabled={!isNewDraft} value={cantidadStr} onChange={e => { setPageError(''); setCantidadStr(e.target.value) }} /></Field>
             <Field label="Café de segunda">
-              <select className="select" value={segundaType} onChange={e => setSegundaType(e.target.value as SegundaType)}>
+              <select className="select disabled:bg-stone-100 disabled:text-stone-500" disabled={!isNewDraft} value={segundaType} onChange={e => setSegundaType(e.target.value as SegundaType)}>
                 <option value="oro">Oro</option>
                 <option value="natural">Natural</option>
               </select>
@@ -298,6 +299,8 @@ function BlendForm({ id }: { id?: string }) {
           {cantidadLb > 0 && plan.isValid && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">✓ Hay inventario suficiente para producir este plan.</div>
           )}
+
+          {!isNewDraft && <p className="mt-3 text-xs text-stone-500">La cantidad y el café de segunda se fijan al iniciar el lote y ya no se pueden cambiar.</p>}
 
           {isNewDraft && (
             <button className="btn-primary mt-5 disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting} onClick={handleStart}>
@@ -452,12 +455,6 @@ function BlendForm({ id }: { id?: string }) {
   )
 }
 
-function Field({ label, children }: { label: string, children: React.ReactNode }) {
-  return <label className="block"><span className="label">{label}</span>{children}</label>
-}
-function SectionTitle({ title, subtitle }: { title: string, subtitle: string }) {
-  return <div className="mb-6"><h3 className="text-lg font-black">{title}</h3><p className="mt-1 text-sm text-stone-500">{subtitle}</p></div>
-}
-function Stat({ label, value }: { label: string, value: string }) {
-  return <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</p><p className="mt-1 text-xl font-black text-stone-900">{value}</p></div>
-}
+
+
+

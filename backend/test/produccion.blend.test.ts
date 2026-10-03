@@ -120,6 +120,26 @@ describe('POST /api/produccion/blend/:id/finalizar', () => {
     expect(pergamino.cantidadLb).toBe(100) // no se tocó nada
   })
 
+  it('dos "finalizar" simultáneos: solo uno se aplica y el inventario se descuenta una sola vez', async () => {
+    const id = await startLote()
+    const [a, b] = await Promise.all([
+      request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token)),
+      request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token)),
+    ])
+    expect([a.status, b.status].sort()).toEqual([200, 400])
+    const stock = await prisma.inventarioStock.findUnique({ where: { material: 'pergamino' } })
+    expect(stock?.cantidadLb.toNumber()).toBe(65) // 100 - 35, una sola vez
+  })
+
+  it('no permite modificar ni borrar un lote ya finalizado', async () => {
+    const id = await startLote()
+    await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))
+    const patch = await request(app).patch(`/api/produccion/blend/${id}`).set(authHeader(token)).send({ bagType: 'especial' })
+    expect(patch.status).toBe(400)
+    const del = await request(app).delete(`/api/produccion/blend/${id}`).set(authHeader(token))
+    expect(del.status).toBe(400)
+  })
+
   it('no permite finalizar dos veces', async () => {
     const id = await startLote()
     await request(app).post(`/api/produccion/blend/${id}/finalizar`).set(authHeader(token))

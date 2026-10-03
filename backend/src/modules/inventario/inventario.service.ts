@@ -63,6 +63,12 @@ async function addMovement(
 }
 
 async function applyDelta(db: Db, material: StockMaterial, deltaLb: number) {
+  // Restar nunca crea la fila (antes ya se validó que hay existencia). No se usa upsert para restar:
+  // la fila "a insertar" del upsert llevaría la cantidad negativa y la restricción CHECK la rechaza.
+  if (deltaLb < 0) {
+    await db.inventarioStock.update({ where: { material }, data: { cantidadLb: { increment: deltaLb } } })
+    return
+  }
   await db.inventarioStock.upsert({
     where: { material },
     create: { material, cantidadLb: deltaLb },
@@ -250,6 +256,10 @@ const GOURMET_BAG_LABELS: Record<GourmetBagType, string> = { comercial: 'Comerci
 const SUELTO_TOLERANCIA_G = 3
 
 async function addEmpacado(db: Db, tipo: GourmetBagType, delta: number) {
+  if (delta < 0) {
+    await db.inventarioGourmetEmpacado.update({ where: { tipoBolsa: tipo }, data: { bolsas: { increment: delta } } })
+    return
+  }
   await db.inventarioGourmetEmpacado.upsert({
     where: { tipoBolsa: tipo },
     create: { tipoBolsa: tipo, bolsas: delta },

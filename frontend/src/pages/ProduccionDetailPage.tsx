@@ -3,6 +3,7 @@ import { ArrowLeft, Blend, Coffee } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useProduction, useProductionsLoaded } from '../store/productionStore'
 import { ROAST_TYPE_LABELS, blendMermaLb, gourmetMermaLb } from '../types/production'
+import { Stat } from '../components/FormParts'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -121,6 +122,4 @@ export default function ProduccionDetailPage() {
   )
 }
 
-function Stat({ label, value }: { label: string, value: string }) {
-  return <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</p><p className="mt-1 text-xl font-black text-stone-900">{value}</p></div>
-}
+

@@ -65,10 +65,12 @@ export default function ClienteDetailPage() {
               return (
                 <div key={order.id} className="flex flex-wrap items-center gap-4 p-4">
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {isFinalized && (
+                    {isFinalized ? (
                       <Link to={`/clientes/ordenes/${order.id}/editar`} className="icon-btn" title="Editar orden"><Pencil size={16} /></Link>
+                    ) : (
+                      // Una orden finalizada no se puede borrar: tiene factura y ya descontó sus bolsas del inventario.
+                      <button className="icon-btn-danger" title="Eliminar orden" onClick={() => handleDeleteOrder(order.id, order.orderNo)}><Trash2 size={16} /></button>
                     )}
-                    <button className="icon-btn-danger" title="Eliminar orden" onClick={() => handleDeleteOrder(order.id, order.orderNo)}><Trash2 size={16} /></button>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-stone-900">{order.orderNo}</p>

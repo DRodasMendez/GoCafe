@@ -49,11 +49,12 @@ export default function FacturacionPage() {
     return list
   }, [now.getFullYear()])
 
+  // Por fecha de PAGO (no de finalización): una orden finalizada en septiembre y cobrada en octubre cuenta en octubre.
   const cobradoMes = useMemo(
     () => finalizadas
       .filter(o => {
-        if (!o.finalizedAt || !o.pagado) return false
-        const d = new Date(o.finalizedAt)
+        if (!o.pagado || !o.pagadoAt) return false
+        const d = new Date(o.pagadoAt)
         return d.getFullYear() === anioSel && d.getMonth() === mesSel
       })
       .reduce((sum, o) => sum + o.totalPrice, 0),

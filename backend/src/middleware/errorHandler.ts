@@ -22,6 +22,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     res.status(404).json({ error: 'Registro relacionado no encontrado.' })
     return
   }
+  // P2002: valor duplicado en una columna única (ej. nombre de usuario) — es un dato inválido, no un fallo del servidor.
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    res.status(409).json({ error: 'Ya existe un registro con ese valor.' })
+    return
+  }
   console.error(err)
   res.status(500).json({ error: 'Error interno del servidor.' })
 }

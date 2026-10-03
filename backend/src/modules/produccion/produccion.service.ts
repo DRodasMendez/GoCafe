@@ -84,13 +84,28 @@ interface GourmetPatch {
   notas?: string
 }
 
+/**
+ * Las escrituras sobre un lote llevan la condición `status = 'en_proceso'` DENTRO del mismo UPDATE/DELETE
+ * (no "leer y luego escribir"): así dos peticiones simultáneas no pueden pasar ambas el chequeo. Si
+ * ninguna fila calza, se distingue si el lote no existe (404) o si ya está finalizado (400).
+ */
+function loteNoDisponible(existe: unknown, tipo: 'Gourmet' | 'Blend', mensajeFinalizado: string): never {
+  if (!existe) throw new NotFoundError(`Producción ${tipo} no encontrada.`)
+  throw new AppError(mensajeFinalizado)
+}
+
+const MSG_YA_FINALIZADO = 'Este lote ya fue finalizado.'
+const MSG_NO_EDITAR = 'Este lote ya fue finalizado: no se puede modificar porque su inventario ya se aplicó.'
+const MSG_NO_BORRAR = 'No se puede eliminar un lote finalizado: los movimientos de inventario ya se aplicaron.'
+
 export async function updateGourmetProduction(id: string, patch: GourmetPatch) {
   const { roasts, fecha, ...rest } = patch
   await prisma.$transaction(async tx => {
-    const exists = await tx.produccionGourmet.findUnique({ where: { id } })
-    if (!exists) throw new NotFoundError('Producción Gourmet no encontrada.')
-
-    await tx.produccionGourmet.update({ where: { id }, data: { ...rest, fecha: fecha ? new Date(fecha) : undefined } })
+    const updated = await tx.produccionGourmet.updateMany({
+      where: { id, status: 'en_proceso' },
+      data: { ...rest, fecha: fecha ? new Date(fecha) : undefined },
+    })
+    if (updated.count === 0) loteNoDisponible(await tx.produccionGourmet.findUnique({ where: { id } }), 'Gourmet', MSG_NO_EDITAR)
 
     if (roasts) {
       await tx.produccionGourmetTueste.deleteMany({ where: { produccionId: id } })
@@ -105,9 +120,15 @@ export async function updateGourmetProduction(id: string, patch: GourmetPatch) {
 /** Cierra el lote: aquí (y solo aquí) se descuenta el Pergamino y se suman la reserva y el empaque al inventario, todo en una sola transacción. */
 export async function finalizeGourmetProduction(id: string) {
   await prisma.$transaction(async tx => {
-    const p = await tx.produccionGourmet.findUnique({ where: { id } })
-    if (!p) throw new NotFoundError('Producción Gourmet no encontrada.')
-    if (p.status === 'terminada') throw new AppError('Este lote ya fue finalizado.')
+    // Primero se marca el lote como terminado de forma atómica: si llegan dos "finalizar" a la vez,
+    // solo uno lo logra y el otro recibe error, en vez de descontar el inventario dos veces. Si algo
+    // falla más abajo, la transacción revierte también este cambio de estado.
+    const claimed = await tx.produccionGourmet.updateMany({
+      where: { id, status: 'en_proceso' },
+      data: { status: 'terminada', currentStepName: 'Resumen', finalizedAt: new Date() },
+    })
+    if (claimed.count === 0) loteNoDisponible(await tx.produccionGourmet.findUnique({ where: { id } }), 'Gourmet', MSG_YA_FINALIZADO)
+    const p = await tx.produccionGourmet.findUniqueOrThrow({ where: { id } })
 
     const pergaminoUsedLb = p.pergaminoUsedLb.toNumber()
     const available = await inventarioService.getRawMaterialStock('pergamino', tx)
@@ -149,21 +170,14 @@ export async function finalizeGourmetProduction(id: string) {
       referenciaTipo: 'produccion_gourmet',
       referenciaId: code,
     })
-
-    await tx.produccionGourmet.update({
-      where: { id },
-      data: { status: 'terminada', currentStepName: 'Resumen', finalizedAt: new Date() },
-    })
   })
   return getGourmetProduction(id)
 }
 
 /** Un lote finalizado no se puede eliminar: sus movimientos de inventario ya se aplicaron y no hay forma segura de revertirlos. */
 export async function deleteGourmetProduction(id: string) {
-  const p = await prisma.produccionGourmet.findUnique({ where: { id } })
-  if (!p) throw new NotFoundError('Producción Gourmet no encontrada.')
-  if (p.status === 'terminada') throw new AppError('No se puede eliminar un lote finalizado: los movimientos de inventario ya se aplicaron.')
-  await prisma.produccionGourmet.delete({ where: { id } })
+  const deleted = await prisma.produccionGourmet.deleteMany({ where: { id, status: 'en_proceso' } })
+  if (deleted.count === 0) loteNoDisponible(await prisma.produccionGourmet.findUnique({ where: { id } }), 'Gourmet', MSG_NO_BORRAR)
 }
 
 // ---------------------------------------------------------------------------
@@ -224,10 +238,11 @@ interface BlendPatch {
 export async function updateBlendProduction(id: string, patch: BlendPatch) {
   const { roasts, fecha, ...rest } = patch
   await prisma.$transaction(async tx => {
-    const exists = await tx.produccionBlend.findUnique({ where: { id } })
-    if (!exists) throw new NotFoundError('Producción Blend no encontrada.')
-
-    await tx.produccionBlend.update({ where: { id }, data: { ...rest, fecha: fecha ? new Date(fecha) : undefined } })
+    const updated = await tx.produccionBlend.updateMany({
+      where: { id, status: 'en_proceso' },
+      data: { ...rest, fecha: fecha ? new Date(fecha) : undefined },
+    })
+    if (updated.count === 0) loteNoDisponible(await tx.produccionBlend.findUnique({ where: { id } }), 'Blend', MSG_NO_EDITAR)
 
     if (roasts) {
       await tx.produccionBlendTueste.deleteMany({ where: { produccionId: id } })
@@ -241,9 +256,13 @@ export async function updateBlendProduction(id: string, patch: BlendPatch) {
 
 export async function finalizeBlendProduction(id: string) {
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const p = await tx.produccionBlend.findUnique({ where: { id } })
-    if (!p) throw new NotFoundError('Producción Blend no encontrada.')
-    if (p.status === 'terminada') throw new AppError('Este lote ya fue finalizado.')
+    // Igual que en Gourmet: se marca terminado primero, de forma atómica (evita el doble descuento).
+    const claimed = await tx.produccionBlend.updateMany({
+      where: { id, status: 'en_proceso' },
+      data: { status: 'terminada', currentStepName: 'Resumen', finalizedAt: new Date() },
+    })
+    if (claimed.count === 0) loteNoDisponible(await tx.produccionBlend.findUnique({ where: { id } }), 'Blend', MSG_YA_FINALIZADO)
+    const p = await tx.produccionBlend.findUniqueOrThrow({ where: { id } })
 
     const pergaminoUsedLb = p.pergaminoUsedLb.toNumber()
     const segundaUsedLb = p.segundaUsedLb.toNumber()
@@ -273,18 +292,11 @@ export async function finalizeBlendProduction(id: string) {
       referenciaTipo: 'produccion_blend',
       referenciaId: code,
     })
-
-    await tx.produccionBlend.update({
-      where: { id },
-      data: { status: 'terminada', currentStepName: 'Resumen', finalizedAt: new Date() },
-    })
   })
   return getBlendProduction(id)
 }
 
 export async function deleteBlendProduction(id: string) {
-  const p = await prisma.produccionBlend.findUnique({ where: { id } })
-  if (!p) throw new NotFoundError('Producción Blend no encontrada.')
-  if (p.status === 'terminada') throw new AppError('No se puede eliminar un lote finalizado: los movimientos de inventario ya se aplicaron.')
-  await prisma.produccionBlend.delete({ where: { id } })
+  const deleted = await prisma.produccionBlend.deleteMany({ where: { id, status: 'en_proceso' } })
+  if (deleted.count === 0) loteNoDisponible(await prisma.produccionBlend.findUnique({ where: { id } }), 'Blend', MSG_NO_BORRAR)
 }

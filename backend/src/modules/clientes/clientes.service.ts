@@ -1,5 +1,6 @@
+import { OrderStatus, Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma'
-import { NotFoundError } from '../../errors'
+import { AppError, NotFoundError } from '../../errors'
 
 export function listClientes() {
   return prisma.cliente.findMany({ orderBy: { updatedAt: 'desc' } })
@@ -24,9 +25,22 @@ export async function updateCliente(id: string, patch: Partial<{ nombre: string;
   return prisma.cliente.update({ where: { id }, data: patch })
 }
 
-/** Borra el cliente y, en cascada (definida en el esquema), todas sus órdenes — mismo comportamiento que tenía la versión local. */
+/**
+ * Borra el cliente y, en cascada, sus órdenes NO finalizadas. Si tiene órdenes finalizadas se rechaza:
+ * borrarlas perdería su historial de facturación y dejaría sin explicación las bolsas que descontaron.
+ */
 export async function deleteCliente(id: string) {
-  const exists = await prisma.cliente.findUnique({ where: { id } })
-  if (!exists) throw new NotFoundError('Cliente no encontrado.')
-  await prisma.cliente.delete({ where: { id } })
+  await prisma.$transaction(async tx => {
+    // Bloquea las órdenes del cliente para que ninguna se finalice entre el chequeo y el borrado.
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM ordenes WHERE client_id = ${id} FOR UPDATE`)
+    const exists = await tx.cliente.findUnique({ where: { id } })
+    if (!exists) throw new NotFoundError('Cliente no encontrado.')
+    const finalizadas = await tx.orden.count({ where: { clienteId: id, status: OrderStatus.Finalizado } })
+    if (finalizadas > 0) {
+      throw new AppError(
+        `No se puede eliminar este cliente: tiene ${finalizadas} orden${finalizadas === 1 ? '' : 'es'} finalizada${finalizadas === 1 ? '' : 's'} con factura.`
+      )
+    }
+    await tx.cliente.delete({ where: { id } })
+  })
 }

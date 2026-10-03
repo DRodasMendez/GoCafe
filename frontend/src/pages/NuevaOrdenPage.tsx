@@ -7,6 +7,7 @@ import { createOrder, finalizeOrder, updateOrder, useOrder, useOrdersLoaded } fr
 import { useClient, useClientsLoaded } from '../store/clientsStore'
 import OrderSummary from '../components/OrderSummary'
 import DatePickerField from '../components/DatePickerField'
+import { Field, SectionTitle, Stat } from '../components/FormParts'
 
 const STEPS_WITHOUT_CLEANING = ['Recepción', 'Trillado', 'Tuestes', 'Postproceso', 'Empaque', 'Resumen']
 const STEPS_WITH_CLEANING = ['Recepción', 'Limpieza', 'Trillado', 'Tuestes', 'Postproceso', 'Empaque', 'Resumen']
@@ -221,6 +222,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     orderNo: existingOrder?.orderNo ?? 'Se asigna al guardar',
     status: statusForCompletedStep(steps[step]),
     pagado: existingOrder?.pagado ?? false,
+    pagadoAt: existingOrder?.pagadoAt ?? null,
     createdAt: '',
     updatedAt: '',
     finalizedAt: null,
@@ -259,6 +261,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
   const handleFinalize = async () => {
     if (!validateStepBeforeLeaving(step)) return
     if (submitting) return
+    if ((Number(totalPrice) || 0) <= 0 && !window.confirm('El total a cobrar es Q0.00. La factura saldrá en cero y la orden no quedará como pendiente de cobro. ¿Finalizar de todas formas?')) return
     setSubmitting(true)
     const payload = buildOrderPayload()
     try {
@@ -601,7 +604,15 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
       )}
 
       {steps[step] === 'Empaque' && (
-        <section className="space-y-4">
+        // Una orden finalizada ya descontó sus bolsas del inventario: su empaque queda de solo lectura
+        // (el backend también lo rechaza). El resto de la orden sí se puede corregir.
+        <fieldset disabled={isFinalizedEdit} className="space-y-4 disabled:opacity-90">
+          {isFinalizedEdit && (
+            <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-900">
+              <AlertTriangle className="mt-0.5 shrink-0" size={19} />
+              <span>Esta orden ya fue finalizada y sus bolsas ya se descontaron del inventario de empaque, por eso el empaque no se puede modificar.</span>
+            </div>
+          )}
           <div className="card p-6">
             <SectionTitle title={`${step + 1}. Empaque`} subtitle="Resultados del Sistema" />
 
@@ -658,7 +669,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
               </div>
             )}
           </div>
-        </section>
+        </fieldset>
       )}
 
       {steps[step] === 'Resumen' && (
@@ -692,12 +703,6 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
   )
 }
 
-function Field({ label, children }: { label: string, children: React.ReactNode }) {
-  return <label className="block"><span className="label">{label}</span>{children}</label>
-}
-function SectionTitle({ title, subtitle }: { title: string, subtitle: string }) {
-  return <div className="mb-6"><h3 className="text-lg font-black">{title}</h3><p className="mt-1 text-sm text-stone-500">{subtitle}</p></div>
-}
-function Stat({ label, value }: { label: string, value: string }) {
-  return <div className="rounded-xl bg-stone-100 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</p><p className="mt-1 text-xl font-black text-stone-900">{value}</p></div>
-}
+
+
+

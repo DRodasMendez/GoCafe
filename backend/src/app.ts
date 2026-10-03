@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 import morgan from 'morgan'
 import { env } from './env'
 import { authRouter } from './modules/auth/auth.routes'
@@ -12,6 +13,7 @@ import { notFoundHandler, errorHandler } from './middleware/errorHandler'
 
 export const app = express()
 
+app.use(helmet())
 app.use(cors({ origin: env.corsOrigin }))
 app.use(express.json())
 app.use(morgan('dev'))

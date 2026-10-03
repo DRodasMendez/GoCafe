@@ -198,6 +198,27 @@ describe('POST /api/ordenes/:id/finalizar', () => {
     expect(deLaOrden).toHaveLength(2) // transparente + laminada
   })
 
+  it('dos "finalizar" simultáneos: solo uno se aplica y las bolsas se descuentan una sola vez', async () => {
+    await setEmpaqueStock('transparente', 10)
+    const created = await request(app).post('/api/ordenes').set(authHeader(token)).send(baseOrden({ actualFullBags: 3, packageAllocation: { transparente: 3 } }))
+    const [a, b] = await Promise.all([
+      request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token)),
+      request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token)),
+    ])
+    expect([a.status, b.status].sort()).toEqual([200, 400])
+    const stock = await prisma.inventarioEmpaqueStock.findUnique({ where: { tipo: 'transparente' } })
+    expect(stock?.cantidad).toBe(7)
+  })
+
+  it('rechaza finalizar si las bolsas distribuidas no suman las bolsas completas', async () => {
+    await setEmpaqueStock('transparente', 10)
+    const created = await request(app).post('/api/ordenes').set(authHeader(token)).send(baseOrden({ actualFullBags: 5, packageAllocation: { transparente: 3 } }))
+    const res = await request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token))
+    expect(res.status).toBe(400)
+    const orden = await request(app).get(`/api/ordenes/${created.body.id}`).set(authHeader(token))
+    expect(orden.body.status).not.toBe('Finalizado')
+  })
+
   it('falla al finalizar si no hay suficientes bolsas del tipo distribuido, sin aplicar nada', async () => {
     await setEmpaqueStock('transparente', 1)
     const created = await request(app)
@@ -214,14 +235,86 @@ describe('POST /api/ordenes/:id/finalizar', () => {
 })
 
 describe('PATCH /api/ordenes/:id/pagado', () => {
-  it('marca y desmarca el pago', async () => {
+  it('marca y desmarca el pago, guardando la fecha de pago', async () => {
     const created = await request(app).post('/api/ordenes').set(authHeader(token)).send(baseOrden())
 
     const marcado = await request(app).patch(`/api/ordenes/${created.body.id}/pagado`).set(authHeader(token)).send({ pagado: true })
     expect(marcado.body.pagado).toBe(true)
+    expect(marcado.body.pagadoAt).toBeTruthy()
+
+    // Volver a marcar como pagada no cambia la fecha original del pago.
+    const otraVez = await request(app).patch(`/api/ordenes/${created.body.id}/pagado`).set(authHeader(token)).send({ pagado: true })
+    expect(otraVez.body.pagadoAt).toBe(marcado.body.pagadoAt)
 
     const desmarcado = await request(app).patch(`/api/ordenes/${created.body.id}/pagado`).set(authHeader(token)).send({ pagado: false })
     expect(desmarcado.body.pagado).toBe(false)
+    expect(desmarcado.body.pagadoAt).toBeNull()
+  })
+})
+
+describe('orden finalizada: protegida', () => {
+  async function ordenFinalizada() {
+    await setEmpaqueStock('transparente', 10)
+    const created = await request(app).post('/api/ordenes').set(authHeader(token)).send(baseOrden({ actualFullBags: 2, packageAllocation: { transparente: 2 } }))
+    await request(app).post(`/api/ordenes/${created.body.id}/finalizar`).set(authHeader(token))
+    return created.body.id as string
+  }
+
+  it('no se puede borrar', async () => {
+    const id = await ordenFinalizada()
+    const res = await request(app).delete(`/api/ordenes/${id}`).set(authHeader(token))
+    expect(res.status).toBe(400)
+  })
+
+  it('no se puede cambiar su empaque, pero sí el precio', async () => {
+    const id = await ordenFinalizada()
+    const empaque = await request(app).patch(`/api/ordenes/${id}`).set(authHeader(token)).send({ packageAllocation: { transparente: 1, laminada: 1 } })
+    expect(empaque.status).toBe(400)
+
+    // Guardar mandando los mismos datos de empaque (como hace el formulario) sí funciona.
+    const precio = await request(app)
+      .patch(`/api/ordenes/${id}`)
+      .set(authHeader(token))
+      .send({ totalPrice: 150, actualFullBags: 2, packageAllocation: { transparente: 2, laminada: 0 } })
+    expect(precio.status).toBe(200)
+    expect(Number(precio.body.totalPrice)).toBe(150)
+  })
+
+  it('su cliente no se puede borrar', async () => {
+    await ordenFinalizada()
+    const res = await request(app).delete(`/api/clientes/${clienteId}`).set(authHeader(token))
+    expect(res.status).toBe(400)
+    const cliente = await request(app).get(`/api/clientes/${clienteId}`).set(authHeader(token))
+    expect(cliente.status).toBe(200)
+  })
+})
+
+describe('validaciones', () => {
+  it('rechaza pesos negativos, tipos inexistentes y fechas invertidas', async () => {
+    const casos = [
+      baseOrden({ cleaningWeight: -1 }),
+      baseOrden({ totalPrice: -10 }),
+      baseOrden({ roastType: 'quemado' }),
+      baseOrden({ grindType: 'polvo' }),
+      baseOrden({ currentStepName: 'Inventado' }),
+      baseOrden({ receivedDate: '2026-01-10', estimatedDate: '2026-01-01' }),
+    ]
+    for (const body of casos) {
+      const res = await request(app).post('/api/ordenes').set(authHeader(token)).send(body)
+      expect(res.status, JSON.stringify(body)).toBe(400)
+    }
+  })
+
+  it('el teléfono del cliente debe tener 8 dígitos', async () => {
+    const malo = await request(app).post('/api/clientes').set(authHeader(token)).send({ nombre: 'A', ciudad: 'B', telefono: '123' })
+    expect(malo.status).toBe(400)
+  })
+})
+
+describe('integridad en la base de datos', () => {
+  it('rechaza dejar existencias negativas aunque el código lo intente', async () => {
+    await setEmpaqueStock('laminada', 1)
+    await expect(prisma.inventarioEmpaqueStock.update({ where: { tipo: 'laminada' }, data: { cantidad: -1 } })).rejects.toThrow()
   })
 })
 

@@ -16,7 +16,7 @@ No se necesita instalar Postgres, ni ninguna librería del sistema por separado 
 
 ```bash
 git clone <url-del-repo>
-cd proyectoA
+cd GoCafe
 
 # 1) Base de datos
 cp .env.example .env

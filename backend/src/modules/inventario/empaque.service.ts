@@ -47,6 +47,11 @@ async function addMovement(
 }
 
 async function applyDelta(db: Db, tipo: EmpaqueType, delta: number) {
+  // Restar nunca crea la fila (antes ya se validó la existencia); con upsert, la fila "a insertar" llevaría la cantidad negativa y el CHECK la rechaza.
+  if (delta < 0) {
+    await db.inventarioEmpaqueStock.update({ where: { tipo }, data: { cantidad: { increment: delta } } })
+    return
+  }
   await db.inventarioEmpaqueStock.upsert({
     where: { tipo },
     create: { tipo, cantidad: delta },

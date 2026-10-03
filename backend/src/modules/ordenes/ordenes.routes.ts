@@ -2,55 +2,70 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { asyncHandler } from '../../middleware/asyncHandler'
 import * as ordenesService from './ordenes.service'
-import { PACKAGE_TYPES } from './ordenes.constants'
+import { GRIND_TYPES, ORDER_ROAST_TYPES, ORDER_STEPS, PACKAGE_TYPES } from './ordenes.constants'
 
 export const ordenesRouter = Router()
 
+const peso = z.number().nonnegative()
+const temp = z.number().nonnegative()
+const tiempo = z.string().max(20)
+
 const roastSchema = z.object({
-  weightLb: z.number(),
-  initialTemp: z.number(),
-  returnTemp: z.number(),
-  returnTime: z.string(),
-  dehydrationTemp: z.number(),
-  dehydrationTime: z.string(),
-  caramelizationTemp: z.number(),
-  caramelizationTime: z.string(),
-  crackTemp: z.number(),
-  crackTime: z.string(),
-  finalTemp: z.number(),
-  finalTime: z.string(),
-  notes: z.string().default(''),
+  weightLb: peso,
+  initialTemp: temp,
+  returnTemp: temp,
+  returnTime: tiempo,
+  dehydrationTemp: temp,
+  dehydrationTime: tiempo,
+  caramelizationTemp: temp,
+  caramelizationTime: tiempo,
+  crackTemp: temp,
+  crackTime: tiempo,
+  finalTemp: temp,
+  finalTime: tiempo,
+  notes: z.string().max(1000).default(''),
 })
 
 const packageAllocationSchema = z.record(z.enum(PACKAGE_TYPES), z.number().int().min(0))
 
 const isoDateString = z.string().refine(v => !isNaN(new Date(v).getTime()), { message: 'Fecha inválida.' })
 
-const createOrdenSchema = z.object({
+const ordenFields = z.object({
   clienteId: z.string().uuid(),
   receivedDate: isoDateString,
   estimatedDate: isoDateString,
   coffeeType: z.enum(['pergamino', 'natural', 'oro']),
   initialWeight: z.number().positive(),
   humidity: z.number().min(0).max(100),
-  cleaningWeight: z.number().optional(),
-  threshingWeight: z.number().optional(),
-  roasts: z.array(roastSchema).optional(),
-  finalWeight: z.number().optional(),
-  roastType: z.string(),
-  grindType: z.string(),
-  totalPrice: z.number().optional(),
+  cleaningWeight: peso.optional(),
+  threshingWeight: peso.optional(),
+  roasts: z.array(roastSchema).max(200).optional(),
+  finalWeight: peso.optional(),
+  roastType: z.enum(ORDER_ROAST_TYPES),
+  grindType: z.enum(GRIND_TYPES),
+  totalPrice: z.number().nonnegative().optional(),
   bagSizeGrams: z.number().positive().optional(),
-  actualFullBags: z.number().int().optional(),
-  actualRemainderGrams: z.number().optional(),
+  actualFullBags: z.number().int().nonnegative().optional(),
+  actualRemainderGrams: z.number().nonnegative().optional(),
   packageAllocation: packageAllocationSchema,
   incompletePackageType: z.enum(PACKAGE_TYPES),
-  currentStepName: z.string(),
+  currentStepName: z.enum(ORDER_STEPS),
 })
 
-const updateOrdenSchema = createOrdenSchema.omit({ clienteId: true }).partial().extend({
-  pagado: z.boolean().optional(),
-})
+/** La fecha estimada de entrega no puede ser anterior a la de recepción (solo se revisa si vienen ambas). */
+function fechasEnOrden(o: { receivedDate?: string; estimatedDate?: string }, ctx: z.RefinementCtx) {
+  if (o.receivedDate && o.estimatedDate && new Date(o.estimatedDate) < new Date(o.receivedDate)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['estimatedDate'], message: 'La fecha estimada de entrega no puede ser anterior a la de recepción.' })
+  }
+}
+
+const createOrdenSchema = ordenFields.superRefine(fechasEnOrden)
+
+const updateOrdenSchema = ordenFields
+  .omit({ clienteId: true })
+  .partial()
+  .extend({ pagado: z.boolean().optional() })
+  .superRefine(fechasEnOrden)
 
 ordenesRouter.get(
   '/',

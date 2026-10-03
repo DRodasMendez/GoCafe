@@ -2,11 +2,15 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { asyncHandler } from '../../middleware/asyncHandler'
 import * as produccionService from './produccion.service'
+import { BLEND_STEPS, GOURMET_STEPS } from './produccion.constants'
 
 export const produccionRouter = Router()
 
-const roastBatchSchema = z.object({ weightLb: z.number(), notes: z.string().default('') })
+const peso = z.number().nonnegative()
+const bolsas = z.number().int().nonnegative()
+const roastBatchSchema = z.object({ weightLb: peso, notes: z.string().max(1000).default('') })
 const isoDateString = z.string().refine(v => !isNaN(new Date(v).getTime()), { message: 'Fecha inválida.' })
+const notas = z.string().max(2000)
 
 // ---------------------------------------------------------------------------
 // Gourmet
@@ -15,23 +19,23 @@ const isoDateString = z.string().refine(v => !isNaN(new Date(v).getTime()), { me
 const startGourmetSchema = z.object({
   fecha: isoDateString,
   pergaminoUsedLb: z.number().positive(),
-  notas: z.string().default(''),
+  notas: notas.default(''),
 })
 
 const updateGourmetSchema = z.object({
   fecha: isoDateString.optional(),
-  currentStepName: z.string().optional(),
-  trilladoWeightLb: z.number().optional(),
+  currentStepName: z.enum(GOURMET_STEPS).optional(),
+  trilladoWeightLb: peso.optional(),
   roastType: z.enum(['claro', 'medio', 'oscuro']).optional(),
-  roasts: z.array(roastBatchSchema).optional(),
-  pesoTuesteResultLb: z.number().optional(),
-  reservaCafeteriaLb: z.number().optional(),
-  molidoWeightLb: z.number().optional(),
-  actualFullBags: z.number().int().optional(),
-  actualRemainderGrams: z.number().optional(),
-  comercialBags: z.number().int().min(0).optional(),
-  especialBags: z.number().int().min(0).optional(),
-  notas: z.string().optional(),
+  roasts: z.array(roastBatchSchema).max(200).optional(),
+  pesoTuesteResultLb: peso.optional(),
+  reservaCafeteriaLb: peso.optional(),
+  molidoWeightLb: peso.optional(),
+  actualFullBags: bolsas.optional(),
+  actualRemainderGrams: peso.optional(),
+  comercialBags: bolsas.optional(),
+  especialBags: bolsas.optional(),
+  notas: notas.optional(),
 })
 
 produccionRouter.get(
@@ -81,20 +85,20 @@ const startBlendSchema = z.object({
   fecha: isoDateString,
   cantidadPlanificadaLb: z.number().positive(),
   segundaType: z.enum(['oro', 'natural']),
-  notas: z.string().default(''),
+  notas: notas.default(''),
 })
 
 const updateBlendSchema = z.object({
   fecha: isoDateString.optional(),
-  currentStepName: z.string().optional(),
-  trilladoWeightLb: z.number().optional(),
-  roasts: z.array(roastBatchSchema).optional(),
-  pesoTuesteResultLb: z.number().optional(),
-  molidoMezclaWeightLb: z.number().optional(),
-  actualFullBags: z.number().int().optional(),
-  actualRemainderGrams: z.number().optional(),
+  currentStepName: z.enum(BLEND_STEPS).optional(),
+  trilladoWeightLb: peso.optional(),
+  roasts: z.array(roastBatchSchema).max(200).optional(),
+  pesoTuesteResultLb: peso.optional(),
+  molidoMezclaWeightLb: peso.optional(),
+  actualFullBags: bolsas.optional(),
+  actualRemainderGrams: peso.optional(),
   bagType: z.enum(['comercial', 'especial']).optional(),
-  notas: z.string().optional(),
+  notas: notas.optional(),
 })
 
 produccionRouter.get(

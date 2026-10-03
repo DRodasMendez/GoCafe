@@ -22,7 +22,7 @@ export default function ClientesPage() {
   const handleDelete = async (e: React.MouseEvent, clientId: string, name: string, orderCount: number) => {
     e.stopPropagation()
     const warning = orderCount > 0
-      ? `¿Eliminar a ${name || 'este cliente'}? También se eliminarán sus ${orderCount} orden${orderCount === 1 ? '' : 'es'} registrada${orderCount === 1 ? '' : 's'}.`
+      ? `¿Eliminar a ${name || 'este cliente'}? También se eliminarán sus ${orderCount} orden${orderCount === 1 ? '' : 'es'} en proceso.`
       : `¿Eliminar a ${name || 'este cliente'}?`
     if (!window.confirm(warning)) return
     try {
@@ -72,7 +72,10 @@ export default function ClientesPage() {
 
         {filteredClients.length > 0 && (
           <div className="divide-y divide-stone-100">
-            {filteredClients.map(client => (
+            {filteredClients.map(client => {
+              // Un cliente con órdenes finalizadas no se puede borrar (se perdería su historial de facturación).
+              const finalizadas = client.orders.filter(o => o.status === 'Finalizado').length
+              return (
               <div
                 key={client.id}
                 role="button"
@@ -99,14 +102,16 @@ export default function ClientesPage() {
                 </button>
                 <button
                   type="button"
-                  className="icon-btn-danger shrink-0"
-                  title="Eliminar cliente"
+                  className="icon-btn-danger shrink-0 disabled:cursor-not-allowed disabled:opacity-30"
+                  disabled={finalizadas > 0}
+                  title={finalizadas > 0 ? `No se puede eliminar: tiene ${finalizadas} orden${finalizadas === 1 ? '' : 'es'} finalizada${finalizadas === 1 ? '' : 's'} con factura` : 'Eliminar cliente'}
                   onClick={e => handleDelete(e, client.id, client.name, client.orders.length)}
                 >
                   <Trash2 size={16} />
                 </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

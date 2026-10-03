@@ -9,3 +9,8 @@ export const PACKAGE_TYPES = [
 ] as const
 
 export type PackageType = (typeof PACKAGE_TYPES)[number]
+
+// Igual que en el frontend (NuevaOrdenPage): pasos del asistente y opciones de tueste/molienda.
+export const ORDER_STEPS = ['Recepción', 'Limpieza', 'Trillado', 'Tuestes', 'Postproceso', 'Empaque', 'Resumen'] as const
+export const ORDER_ROAST_TYPES = ['claro', 'medio', 'oscuro'] as const
+export const GRIND_TYPES = ['gruesa', 'media', 'fina'] as const
