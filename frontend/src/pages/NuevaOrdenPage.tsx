@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Check, Loader2, MapPin, Phone, Plus, Trash2, UserRound } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Loader2, MapPin, Phone, Plus, Trash2, UserRound } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BAG_GRAMS, MAX_ROAST_LB, packagingFromLb } from '../utils/production'
 import { COFFEE_TYPE_LABELS, PACKAGE_TYPES, coffeeTypeHasCleaningStep, statusForCompletedStep, type CoffeeType, type Order, type PackageAllocation, type PackageType, type Roast } from '../types/order'
@@ -8,6 +8,9 @@ import { useClient, useClientsLoaded } from '../store/clientsStore'
 import OrderSummary from '../components/OrderSummary'
 import DatePickerField from '../components/DatePickerField'
 import { Field, SectionTitle, Stat } from '../components/FormParts'
+import PageLoader from '../components/ui/PageLoader'
+import WizardSteps, { WizardNav } from '../components/ui/WizardSteps'
+import { confirmDialog, toast } from '../components/ui/feedback'
 
 const STEPS_WITHOUT_CLEANING = ['Recepción', 'Trillado', 'Tuestes', 'Postproceso', 'Empaque', 'Resumen']
 const STEPS_WITH_CLEANING = ['Recepción', 'Limpieza', 'Trillado', 'Tuestes', 'Postproceso', 'Empaque', 'Resumen']
@@ -81,7 +84,7 @@ export default function NuevaOrdenPage() {
   // Espera a que el caché esté listo antes de montar el formulario: los campos se
   // precargan una sola vez (useState perezoso) a partir de existingOrder/client, así
   // que no puede montarse mientras esos datos todavía vienen en camino del backend.
-  if ((id && !ordersReady) || !clientsReady) return null
+  if ((id && !ordersReady) || !clientsReady) return <PageLoader />
   return <OrderForm clientId={clientId} id={id} />
 }
 
@@ -252,6 +255,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     try {
       await persistNow()
       setJustSaved(true)
+      toast.success('Cambios guardados.')
       window.setTimeout(() => setJustSaved(false), 1800)
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'No se pudo guardar la orden.')
@@ -261,7 +265,14 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
   const handleFinalize = async () => {
     if (!validateStepBeforeLeaving(step)) return
     if (submitting) return
-    if ((Number(totalPrice) || 0) <= 0 && !window.confirm('El total a cobrar es Q0.00. La factura saldrá en cero y la orden no quedará como pendiente de cobro. ¿Finalizar de todas formas?')) return
+    if ((Number(totalPrice) || 0) <= 0) {
+      const ok = await confirmDialog({
+        title: '¿Finalizar con total Q0.00?',
+        message: 'La factura saldrá en cero y la orden no quedará como pendiente de cobro.',
+        confirmLabel: 'Finalizar de todas formas',
+      })
+      if (!ok) return
+    }
     setSubmitting(true)
     const payload = buildOrderPayload()
     try {
@@ -441,10 +452,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex items-center gap-4">
         <Link to={`/clientes/${client.id}`} className="rounded-xl border border-stone-200 bg-white p-2.5"><ArrowLeft size={18} /></Link>
-        <div>
-          <h2 className="text-2xl font-black">{isEditing ? 'Editar orden de trabajo' : 'Nueva orden de trabajo'}</h2>
-          <p className="text-sm text-stone-500"></p>
-        </div>
+        <h2 className="text-xl font-black sm:text-2xl">{isEditing ? 'Editar orden de trabajo' : 'Nueva orden de trabajo'}</h2>
       </div>
 
       <div className="card flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
@@ -454,20 +462,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
         <span className="ml-auto rounded-lg bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700">No. de orden {existingOrder?.orderNo ?? 'Se asigna al guardar'}</span>
       </div>
 
-      <div className="card overflow-x-auto p-3">
-        <div className="flex min-w-[760px] gap-2">
-          {steps.map((s, i) => (
-            <button
-              key={s}
-              onClick={() => goToStep(i)}
-              disabled={!isFinalizedEdit}
-              className={`flex-1 rounded-xl px-3 py-3 text-sm font-semibold ${isFinalizedEdit ? 'cursor-pointer' : 'cursor-default'} ${step === i ? 'bg-stone-900 text-white' : i < step ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-500'}`}
-            >
-              <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/20">{i < step ? <Check size={14} /> : i + 1}</span>{s}
-            </button>
-          ))}
-        </div>
-      </div>
+      <WizardSteps steps={steps} current={step} onStepClick={isFinalizedEdit ? goToStep : undefined} />
 
       {pageError && (
         <div className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
@@ -687,18 +682,18 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
         </section>
       )}
 
-      <div className="flex items-center justify-between gap-3">
+      <WizardNav>
         <button className="btn-secondary disabled:opacity-40" disabled={step === 0 || submitting} onClick={goPrev}>Anterior</button>
         {isFinalizedEdit && (
           <div className="flex items-center gap-3">
-            {justSaved && <span className="text-sm font-medium text-emerald-600">Guardado ✓</span>}
+            {justSaved && <span className="hidden text-sm font-medium text-emerald-600 sm:inline">Guardado ✓</span>}
             <button className="btn-primary disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting} onClick={handleSave}>
               {submitting ? <Loader2 size={16} className="animate-spin" /> : null} Guardar
             </button>
           </div>
         )}
         <button className="btn-secondary disabled:opacity-40" disabled={step === steps.length - 1 || submitting} onClick={goNext}>Siguiente</button>
-      </div>
+      </WizardNav>
     </div>
   )
 }

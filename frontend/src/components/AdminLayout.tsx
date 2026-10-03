@@ -10,7 +10,7 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-stone-100">
       <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="lg:pl-72">
-        <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-stone-200 bg-white/90 px-6 backdrop-blur lg:px-8">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-stone-200 bg-white/90 px-4 backdrop-blur sm:h-20 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button type="button" className="icon-btn lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú">
               <Menu size={18} />
@@ -24,7 +24,7 @@ export default function AdminLayout() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-900 text-sm font-bold text-white">GC</div>
           </div>
         </header>
-        <main className="p-6 lg:p-8"><Outlet /></main>
+        <main className="p-4 sm:p-6 lg:p-8"><Outlet /></main>
       </div>
     </div>
   )

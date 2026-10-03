@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { ArrowLeft, Blend, Coffee } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import PageLoader from '../components/ui/PageLoader'
 import { useProduction, useProductionsLoaded } from '../store/productionStore'
 import { ROAST_TYPE_LABELS, blendMermaLb, gourmetMermaLb } from '../types/production'
 import { Stat } from '../components/FormParts'
@@ -20,7 +21,7 @@ export default function ProduccionDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [production?.id, production?.status])
 
-  if (!loaded) return null
+  if (!loaded) return <PageLoader />
 
   if (!production) {
     return (

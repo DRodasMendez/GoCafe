@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { CalendarDays, Pencil, Plus, Search, Trash2, UserRound, Users } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { deleteClient, useClientsWithOrders } from '../store/clientsStore'
+import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
 
 const REGISTERED_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -21,14 +22,20 @@ export default function ClientesPage() {
 
   const handleDelete = async (e: React.MouseEvent, clientId: string, name: string, orderCount: number) => {
     e.stopPropagation()
-    const warning = orderCount > 0
-      ? `¿Eliminar a ${name || 'este cliente'}? También se eliminarán sus ${orderCount} orden${orderCount === 1 ? '' : 'es'} en proceso.`
-      : `¿Eliminar a ${name || 'este cliente'}?`
-    if (!window.confirm(warning)) return
+    const ok = await confirmDialog({
+      title: `¿Eliminar a ${name || 'este cliente'}?`,
+      message: orderCount > 0
+        ? `También se eliminarán sus ${orderCount} orden${orderCount === 1 ? '' : 'es'} en proceso. Esta acción no se puede deshacer.`
+        : 'Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar cliente',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await deleteClient(clientId)
+      toast.success(`${name || 'Cliente'} eliminado.`)
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo eliminar el cliente.')
+      toast.error(errorMessage(err, 'No se pudo eliminar el cliente.'))
     }
   }
 

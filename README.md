@@ -39,6 +39,11 @@ npm run dev            # http://localhost:5173
 
 Con eso, `docker compose down` apaga la base de datos (los datos quedan guardados en un volumen; `docker compose down -v` sí los borra).
 
+## Uso diario
+Una vez hecha la puesta en marcha, para encender el sistema basta con ejecutar **`iniciar-gocafe.bat`** (doble clic). Abre Docker si hace falta, enciende la base de datos y abre el backend y el frontend en sus propias ventanas. Para apagar, se cierran las ventanas "GoCafe - Backend" y "GoCafe - Frontend".
+
+**Desde una tablet o celular:** con la computadora encendida y en el mismo Wi-Fi, abrir `http://<IP-de-la-computadora>:5173`; el script muestra la dirección exacta al terminar. Vite escucha en la red local y reenvía `/api` al backend (ver `frontend/vite.config.ts`), así que no hace falta configurar nada en el dispositivo.
+
 ## Por qué así, y no de otra forma
 - **Docker solo para Postgres**: es la única pieza que, si no se dockeriza, obliga a instalar y versionar a mano un motor de base de datos en cada máquina. El backend y el frontend corren nativos con `npm run dev` porque así el hot-reload es más rápido, sobre todo en Windows.
 - **`package-lock.json` va commiteado** en ambos proyectos — usa `npm ci` en vez de `npm install` si quieres una instalación estrictamente igual a la del lockfile (por ejemplo en CI).

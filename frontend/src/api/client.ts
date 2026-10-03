@@ -1,6 +1,8 @@
 import { clearToken, getToken } from './token'
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
+// Sin VITE_API_URL, se usa el mismo origen desde el que se abrió la página: en desarrollo, Vite reenvía
+// /api al backend (ver vite.config.ts). Así funciona igual desde esta computadora o desde una tablet.
+const API_URL = import.meta.env.VITE_API_URL || window.location.origin
 
 export class ApiError extends Error {
   status: number

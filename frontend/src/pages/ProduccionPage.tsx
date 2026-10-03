@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { PRODUCTION_STATUS_LABELS, roastedAllocatedLb, type Production } from '../types/production'
 import { deleteBlendProduction, deleteGourmetProduction, useAllProductions } from '../store/productionStore'
 import { packagedWeightLb, todayISODate } from '../utils/production'
+import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
 const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
@@ -38,12 +39,19 @@ export default function ProduccionPage() {
 
   const handleDelete = async (e: React.MouseEvent, p: Production) => {
     e.stopPropagation()
-    if (!window.confirm(`¿Eliminar el lote ${p.code}? Todavía no había afectado el inventario.`)) return
+    const ok = await confirmDialog({
+      title: `¿Eliminar el lote ${p.code}?`,
+      message: 'Todavía no había afectado el inventario, así que no se mueve nada. Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar lote',
+      danger: true,
+    })
+    if (!ok) return
     try {
       if (p.type === 'gourmet') await deleteGourmetProduction(p.id)
       else await deleteBlendProduction(p.id)
+      toast.success(`Lote ${p.code} eliminado.`)
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo eliminar el lote.')
+      toast.error(errorMessage(err, 'No se pudo eliminar el lote.'))
     }
   }
 

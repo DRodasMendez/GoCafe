@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownCircle, ArrowUpCircle, Blend, CheckCircle2, Coffee, Loader2, Package, PackageCheck, Pencil, Warehouse, X, XCircle } from 'lucide-react'
 import { RAW_MATERIAL_LABELS, ROAST_TYPES, ROAST_TYPE_LABELS } from '../types/production'
 import type { RawMaterialType, RoastType } from '../types/production'
@@ -33,6 +33,7 @@ import {
   type StockMaterial,
 } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
+import { errorMessage, toast } from '../components/ui/feedback'
 
 const DATE_TIME_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const DAY_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -285,8 +286,9 @@ function MinimoEditor({ value, display, onSave }: { value: number, display: stri
           try {
             await onSave(Number(str) || 0)
             setEditing(false)
+            toast.success('Mínimo actualizado.')
           } catch (err) {
-            window.alert(err instanceof Error ? err.message : 'No se pudo actualizar el mínimo.')
+            toast.error(errorMessage(err, 'No se pudo actualizar el mínimo.'))
           }
         }}
       >
@@ -463,6 +465,7 @@ function EmpaqueEntradaModal({ item, onClose }: { item: EmpaqueStockItem, onClos
     setSubmitting(true)
     try {
       await registrarEntradaEmpaque(item.tipo, cantidadNum, motivo)
+      toast.success(`Se registraron ${cantidadNum} bolsas de ${item.label}.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la entrada.')
@@ -499,6 +502,7 @@ function EmpaqueEditarModal({ item, onClose }: { item: EmpaqueStockItem, onClose
     setSubmitting(true)
     try {
       await registrarSalidaEmpaque(item.tipo, cantidadNum, motivo.trim() || 'Corrección de captura')
+      toast.success(`Se restaron ${cantidadNum} bolsas de ${item.label}.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la corrección.')
@@ -614,13 +618,26 @@ function MonthlyHistory({ title, materials }: { title: string, materials: StockM
   )
 }
 
+/** En celular sale desde abajo (más fácil de alcanzar); en pantallas grandes, centrado. Escape lo cierra. */
 function Modal({ title, onClose, children }: { title: string, onClose: () => void, children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-stone-950/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="mb-5 flex items-center justify-between">
+    <div className="animate-fade-in fixed inset-0 z-40 flex items-end justify-center bg-stone-950/50 sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="animate-slide-up max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:pb-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="mb-5 flex items-center justify-between gap-3">
           <h3 className="text-lg font-black">{title}</h3>
-          <button className="icon-btn" onClick={onClose}><X size={16} /></button>
+          <button className="icon-btn shrink-0" onClick={onClose} aria-label="Cerrar"><X size={16} /></button>
         </div>
         {children}
       </div>
@@ -642,6 +659,7 @@ function EntradaModal({ material, onClose }: { material: RawMaterialType, onClos
     setSubmitting(true)
     try {
       await registrarEntradaMateriaPrima(material, cantidadLb, motivo)
+      toast.success(`Entrada de ${cantidadLb} lb de ${RAW_MATERIAL_LABELS[material]} registrada.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la entrada.')
@@ -678,6 +696,7 @@ function EditarStockModal({ material, stockLb, onClose }: { material: RawMateria
     setSubmitting(true)
     try {
       await registrarSalidaMateriaPrima(material, cantidadLb, motivo.trim() || 'Corrección de captura')
+      toast.success(`Se restaron ${cantidadLb} lb de ${RAW_MATERIAL_LABELS[material]}.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la corrección.')
@@ -714,6 +733,7 @@ function RetiroGranoModal({ onClose }: { onClose: () => void }) {
     setSubmitting(true)
     try {
       await descontarGranoCafeteria(tipo, cantidadLb, `Envío a cafetería — Tueste ${ROAST_TYPE_LABELS[tipo]}`)
+      toast.success(`Envío de ${cantidadLb} lb a cafetería registrado.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el envío.')
@@ -767,6 +787,7 @@ function BlendSalidaModal({ availableFullBags, onClose }: { availableFullBags: n
     setSubmitting(true)
     try {
       await enviarBlendTerminado(bolsasNum, nota.trim() ? `Envío al mayoreo — ${nota.trim()}` : 'Envío al mayoreo')
+      toast.success(`${bolsasNum} bolsas de Blend enviadas al mayoreo.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el envío.')
@@ -806,6 +827,7 @@ function GourmetSalidaModal({ empacado, onClose }: { empacado: GourmetEmpacado, 
     setSubmitting(true)
     try {
       await descontarGourmetTerminado(tipo, bolsasNum, nota.trim() ? `Envío a cafetería — ${nota.trim()}` : 'Envío a cafetería')
+      toast.success(`${bolsasNum} bolsas ${GOURMET_BAG_LABELS[tipo]} enviadas a cafetería.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el envío.')
@@ -850,6 +872,7 @@ function EmpacarSobranteModal({ sueltoGramos, alcanzaPara, empaqueStock, onClose
     setSubmitting(true)
     try {
       await empacarSobranteGourmet(tipo, bolsasNum, '')
+      toast.success(`${bolsasNum} bolsa${bolsasNum === 1 ? '' : 's'} de café suelto empacada${bolsasNum === 1 ? '' : 's'}.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el empaque.')

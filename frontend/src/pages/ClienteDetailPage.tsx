@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { useClient, useClientsLoaded } from '../store/clientsStore'
 import { deleteOrder, useClientOrders } from '../store/ordersStore'
 import StatusProgressBar from '../components/StatusProgressBar'
+import PageLoader from '../components/ui/PageLoader'
+import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
 
 export default function ClienteDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -10,7 +12,7 @@ export default function ClienteDetailPage() {
   const client = useClient(clientId)
   const orders = useClientOrders(clientId)
 
-  if (!loaded) return null
+  if (!loaded) return <PageLoader />
 
   if (!client) {
     return (
@@ -22,11 +24,13 @@ export default function ClienteDetailPage() {
   }
 
   const handleDeleteOrder = async (orderId: string, orderNo: string) => {
-    if (!window.confirm(`¿Eliminar la orden ${orderNo}? Esta acción no se puede deshacer.`)) return
+    const ok = await confirmDialog({ title: `¿Eliminar la orden ${orderNo}?`, message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar orden', danger: true })
+    if (!ok) return
     try {
       await deleteOrder(orderId)
+      toast.success(`Orden ${orderNo} eliminada.`)
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo eliminar la orden.')
+      toast.error(errorMessage(err, 'No se pudo eliminar la orden.'))
     }
   }
 

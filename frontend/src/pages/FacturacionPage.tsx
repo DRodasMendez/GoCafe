@@ -5,6 +5,7 @@ import { setOrderPagado, useOrders } from '../store/ordersStore'
 import { generateInvoicePdf } from '../utils/invoicePdf'
 import { localISODate, todayISODate } from '../utils/production'
 import DatePickerField from '../components/DatePickerField'
+import { errorMessage, toast } from '../components/ui/feedback'
 import type { Order } from '../types/order'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -90,6 +91,8 @@ export default function FacturacionPage() {
     setGeneratingId(order.id)
     try {
       await generateInvoicePdf(order)
+    } catch (err) {
+      toast.error(errorMessage(err, 'No se pudo generar la factura.'))
     } finally {
       setGeneratingId(null)
     }
@@ -191,7 +194,9 @@ export default function FacturacionPage() {
                             <td className="px-3 py-2.5">
                               <button
                                 type="button"
-                                onClick={() => setOrderPagado(order.id, !order.pagado).catch(err => window.alert(err instanceof Error ? err.message : 'No se pudo actualizar el pago.'))}
+                                onClick={() => setOrderPagado(order.id, !order.pagado)
+                                  .then(() => toast.success(order.pagado ? `${order.orderNo} marcada como pendiente.` : `${order.orderNo} marcada como pagada.`))
+                                  .catch(err => toast.error(errorMessage(err, 'No se pudo actualizar el pago.')))}
                                 className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${order.pagado ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
                               >
                                 {order.pagado ? <CheckCircle2 size={13} /> : <Circle size={13} />} {order.pagado ? 'Pagado' : 'Pendiente'}

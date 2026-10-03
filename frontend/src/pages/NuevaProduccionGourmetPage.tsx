@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Check, Coffee, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Coffee, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BAG_GRAMS, MAX_ROAST_LB, packagingFromLb, todayISODate } from '../utils/production'
 import { GOURMET_STEPS, ROAST_TYPES, ROAST_TYPE_LABELS, gourmetMermaLb, roastedAllocatedLb, type GourmetStep, type RoastBatch, type RoastType } from '../types/production'
@@ -13,6 +13,8 @@ import {
 import { getRawMaterialStock, useInventory } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
 import { Field, SectionTitle, Stat } from '../components/FormParts'
+import PageLoader from '../components/ui/PageLoader'
+import WizardSteps, { WizardNav } from '../components/ui/WizardSteps'
 
 type RoastForm = { id: number, weightLb: number | '', notes: string }
 const emptyRoast = (id: number): RoastForm => ({ id, weightLb: '', notes: '' })
@@ -23,7 +25,7 @@ export default function NuevaProduccionGourmetPage() {
   const productionsReady = useProductionsLoaded()
   // Igual que en NuevaOrdenPage: el formulario precarga sus campos una sola vez (useState
   // perezoso) a partir de "existing", así que no puede montarse hasta que el lote ya esté en caché.
-  if (id && !productionsReady) return null
+  if (id && !productionsReady) return <PageLoader />
   return <GourmetForm id={id} />
 }
 
@@ -242,18 +244,7 @@ function GourmetForm({ id }: { id?: string }) {
         <span className="rounded-lg bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700">Lote {existing?.code ?? 'Se asigna al guardar'}</span>
       </div>
 
-      <div className="card overflow-x-auto p-3">
-        <div className="flex min-w-[820px] gap-2">
-          {GOURMET_STEPS.map((s, i) => (
-            <div
-              key={s}
-              className={`flex-1 rounded-xl px-3 py-3 text-sm font-semibold ${step === i ? 'bg-stone-900 text-white' : i < step ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-500'}`}
-            >
-              <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/20">{i < step ? <Check size={14} /> : i + 1}</span>{s}
-            </div>
-          ))}
-        </div>
-      </div>
+      <WizardSteps steps={GOURMET_STEPS} current={step} />
 
       {pageError && (
         <div className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
@@ -445,10 +436,10 @@ function GourmetForm({ id }: { id?: string }) {
         </section>
       )}
 
-      <div className="flex items-center justify-between gap-3">
+      <WizardNav>
         <button className="btn-secondary disabled:opacity-40" disabled={step === 0 || submitting} onClick={goPrev}>Anterior</button>
         <button className="btn-secondary disabled:opacity-40" disabled={step === GOURMET_STEPS.length - 1 || (isNewDraft && step === 0) || submitting} onClick={goNext}>Siguiente</button>
-      </div>
+      </WizardNav>
     </div>
   )
 }

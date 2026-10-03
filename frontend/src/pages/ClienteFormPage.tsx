@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import PageLoader from '../components/ui/PageLoader'
+import { toast } from '../components/ui/feedback'
 import { createClient, updateClient, useClient, useClientsLoaded } from '../store/clientsStore'
 import { formatGuatemalaPhone, phoneDigits } from '../utils/phone'
 
@@ -10,7 +12,7 @@ export default function ClienteFormPage() {
   // Igual que en NuevaOrdenPage: el formulario precarga sus campos una sola vez (useState
   // perezoso) a partir del cliente existente, así que no puede montarse hasta que el caché
   // de clientes ya esté listo (si no, quedaría con los campos vacíos para siempre).
-  if (!loaded) return null
+  if (!loaded) return <PageLoader />
   return <ClienteForm clientId={clientId} />
 }
 
@@ -45,9 +47,11 @@ function ClienteForm({ clientId }: { clientId?: string }) {
     try {
       if (isEditing && existingClient) {
         await updateClient(existingClient.id, { name: name.trim(), city: city.trim(), phone })
+        toast.success('Cliente actualizado.')
         navigate(`/clientes/${existingClient.id}`)
       } else {
         const created = await createClient({ name: name.trim(), city: city.trim(), phone })
+        toast.success(`Cliente ${created.name} registrado.`)
         navigate(`/clientes/${created.id}`)
       }
     } catch (err) {

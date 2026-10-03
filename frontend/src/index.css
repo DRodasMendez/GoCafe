@@ -8,18 +8,32 @@
   text-rendering: optimizeLegibility;
 }
 
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-tap-highlight-color: transparent; }
 button, input, select, textarea { font: inherit; }
+::selection { background: #fde68a; color: #1c1917; }
 
 @layer components {
   .card { @apply rounded-2xl border border-stone-200 bg-white shadow-sm; }
   .label { @apply mb-1.5 block text-sm font-medium text-stone-700; }
-  .input { @apply w-full resize-none rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10; }
-  .select { @apply w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10; }
-  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-400; }
-  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50; }
-  .icon-btn { @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 transition hover:bg-stone-50; }
-  .icon-btn-danger { @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-500 transition hover:bg-red-50; }
+  /* 16px en celular: iOS hace zoom automático al enfocar campos con letra más chica. */
+  .input { @apply w-full resize-none rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-base outline-none transition placeholder:text-stone-400 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500 sm:text-sm; }
+  .select { @apply w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-base outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500 sm:text-sm; }
+  .btn-primary { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-stone-950 shadow-sm transition hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100; }
+  .btn-secondary { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-400/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100; }
+  .btn-danger { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50; }
+  .icon-btn { @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-500 transition hover:bg-stone-50 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-400/25 disabled:cursor-not-allowed disabled:opacity-40; }
+  .icon-btn-danger { @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-500 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-500/20 disabled:cursor-not-allowed disabled:opacity-30; }
+}
+
+/* Cifras alineadas (que "12.50" y "8.00" ocupen lo mismo) en tarjetas y tablas. */
+.font-black, td { font-variant-numeric: tabular-nums; }
+
+@keyframes gc-slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes gc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.animate-slide-up { animation: gc-slide-up 0.18s ease-out; }
+.animate-fade-in { animation: gc-fade-in 0.15s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up, .animate-fade-in { animation: none; }
 }
 
 .rdp-root {

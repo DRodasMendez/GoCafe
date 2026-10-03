@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
+import PageLoader from '../components/ui/PageLoader'
+import { errorMessage, toast } from '../components/ui/feedback'
 import { useOrder, useOrdersLoaded } from '../store/ordersStore'
 import { generateInvoicePdf } from '../utils/invoicePdf'
 import StatusProgressBar from '../components/StatusProgressBar'
@@ -12,7 +14,7 @@ export default function OrderDetailPage() {
   const order = useOrder(id)
   const [generating, setGenerating] = useState(false)
 
-  if (!loaded) return null
+  if (!loaded) return <PageLoader />
 
   if (!order) {
     return (
@@ -29,6 +31,8 @@ export default function OrderDetailPage() {
     setGenerating(true)
     try {
       await generateInvoicePdf(order)
+    } catch (err) {
+      toast.error(errorMessage(err, 'No se pudo generar la factura.'))
     } finally {
       setGenerating(false)
     }
