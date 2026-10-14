@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { COFFEE_TYPE_LABELS, PACKAGE_TYPES, type Order } from '../types/order'
 import { amountToWords } from './numberToWords'
+import { formatQ } from './money'
 
 const COMPANY_NAME = 'GO CAFÉ'
 const COMPANY_ADDRESSES = [
@@ -35,7 +36,7 @@ function formatDateDMY(value: string | null | undefined): string {
 }
 
 function formatMoney(value: number): string {
-  return `Q${value.toFixed(2)}`
+  return formatQ(value)
 }
 
 function capitalize(value: string): string {
@@ -111,7 +112,8 @@ export async function generateInvoicePdf(order: Order): Promise<void> {
   doc.setTextColor(INK.r, INK.g, INK.b)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('FACTURA / COMPROBANTE', MARGIN_RIGHT, 22, { align: 'right' })
+  // No es una factura FEL de la SAT, así que no se llama "factura".
+  doc.text('COMPROBANTE DE SERVICIO', MARGIN_RIGHT, 22, { align: 'right' })
 
   doc.setDrawColor(BORDER.r, BORDER.g, BORDER.b)
   doc.setLineWidth(0.4)
@@ -260,5 +262,5 @@ export async function generateInvoicePdf(order: Order): Promise<void> {
   doc.rect(0, 294, PAGE_WIDTH, 3, 'F')
 
   const safeDate = new Date().toISOString().slice(0, 10)
-  doc.save(`Factura_${order.orderNo}_${safeDate}.pdf`)
+  doc.save(`Comprobante_${order.orderNo}_${safeDate}.pdf`)
 }

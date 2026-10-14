@@ -111,7 +111,7 @@ function ConfirmModal({ request }: { request: ConfirmRequest }) {
         <div className="flex gap-4">
           {request.danger && <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600"><AlertTriangle size={20} /></div>}
           <div>
-            <h3 id="gc-confirm-title" className="text-lg font-black text-stone-900">{request.title}</h3>
+            <h3 id="gc-confirm-title" className="text-lg font-bold text-stone-900">{request.title}</h3>
             {request.message && <p className="mt-1.5 text-sm text-stone-600">{request.message}</p>}
           </div>
         </div>

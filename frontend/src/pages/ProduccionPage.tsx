@@ -35,7 +35,7 @@ export default function ProduccionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, mesFiltro])
 
-  const periodoLabel = mesFiltro ? MONTH_FORMAT.format(new Date(`${mesFiltro}-01T00:00:00`)) : 'histórico'
+  const periodoLabel = mesFiltro ? MONTH_FORMAT.format(new Date(`${mesFiltro}-01T00:00:00`)) : 'todo el histórico'
 
   const handleDelete = async (e: React.MouseEvent, p: Production) => {
     e.stopPropagation()
@@ -59,8 +59,8 @@ export default function ProduccionPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-black">Producción Go Café</h2>
-          <p className="mt-1 text-sm text-stone-500">Gestión de Café Propio</p>
+          <h2 className="page-title">Producción propia</h2>
+          <p className="mt-1 text-sm text-stone-500">Lotes de Gourmet y Blend · resumen de <b className="font-semibold text-stone-700">{periodoLabel}</b></p>
         </div>
         <div className="flex gap-3">
           <button className="btn-secondary" onClick={() => navigate('/produccion/gourmet/nueva')}><Coffee size={17} /> Nuevo Gourmet</button>
@@ -71,31 +71,31 @@ export default function ProduccionPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Lotes en proceso</p><p className="mt-2 text-3xl font-black text-stone-900">{enProceso.length}</p></div>
+            <div><p className="text-sm text-stone-500">Lotes en proceso</p><p className="mt-2 text-3xl font-bold text-stone-900">{enProceso.length}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Boxes size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Producido ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.lb.toFixed(1)} lb</p></div>
+            <div><p className="text-sm text-stone-500">Producido</p><p className="mt-2 text-3xl font-bold text-stone-900">{periodo.lb.toFixed(1)} lb</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Coffee size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Bolsas Gourmet Comercial ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.gourmetComercial}</p></div>
+            <div><p className="text-sm text-stone-500">Bolsas Gourmet Comercial</p><p className="mt-2 text-3xl font-bold text-stone-900">{periodo.gourmetComercial}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Bolsas Gourmet Especial ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.gourmetEspecial}</p></div>
+            <div><p className="text-sm text-stone-500">Bolsas Gourmet Especial</p><p className="mt-2 text-3xl font-bold text-stone-900">{periodo.gourmetEspecial}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
           </div>
         </div>
         <div className="card p-5">
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-stone-500">Bolsas de Blend ({periodoLabel})</p><p className="mt-2 text-3xl font-black text-stone-900">{periodo.blend}</p></div>
+            <div><p className="text-sm text-stone-500">Bolsas de Blend</p><p className="mt-2 text-3xl font-bold text-stone-900">{periodo.blend}</p></div>
             <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
           </div>
         </div>

@@ -46,13 +46,13 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <div className="mb-6 flex justify-center">
             <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white p-1.5 shadow-lg shadow-black/40">
-              <img src="/images/cafelogo.jpg" alt="Logo GoCafe" className="h-full w-full rounded-full object-cover" />
+              <img src="/images/cafelogo.jpg" alt="Logo Go Café" className="h-full w-full rounded-full object-cover" />
             </div>
           </div>
 
           <div className="card p-8">
-            <h1 className="text-center text-xl font-black text-stone-900">Bienvenido al Sistema GoCafé</h1>
-            <p className="mt-1 text-center text-sm text-stone-500">Inicia sesión para continuar.</p>
+            <h1 className="text-center text-xl font-bold text-stone-900">Go Café</h1>
+            <p className="mt-1 text-center text-sm text-stone-500">Sistema de producción · Inicia sesión para continuar.</p>
 
             {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-center text-sm font-medium text-red-700">{error}</div>}
 

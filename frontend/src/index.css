@@ -14,6 +14,9 @@ button, input, select, textarea { font: inherit; }
 
 @layer components {
   .card { @apply rounded-2xl border border-stone-200 bg-white shadow-sm; }
+  .page-title { @apply text-2xl font-bold tracking-tight text-stone-900; }
+  /* Cifra grande de las tarjetas de resumen. */
+  .stat-value { @apply text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl; }
   .label { @apply mb-1.5 block text-sm font-medium text-stone-700; }
   /* 16px en celular: iOS hace zoom automático al enfocar campos con letra más chica. */
   .input { @apply w-full resize-none rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-base outline-none transition placeholder:text-stone-400 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500 sm:text-sm; }
@@ -26,7 +29,7 @@ button, input, select, textarea { font: inherit; }
 }
 
 /* Cifras alineadas (que "12.50" y "8.00" ocupen lo mismo) en tarjetas y tablas. */
-.font-black, td { font-variant-numeric: tabular-nums; }
+.font-bold, .stat-value, td { font-variant-numeric: tabular-nums; }
 
 @keyframes gc-slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes gc-fade-in { from { opacity: 0; } to { opacity: 1; } }

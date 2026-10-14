@@ -41,7 +41,7 @@ export default function GastosPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-black">Control de gastos</h2>
+          <h2 className="page-title">Control de gastos</h2>
           <p className="mt-1 text-sm text-stone-500">Lo que se pagó en compras de café y bolsas</p>
         </div>
         <input type="month" className="input w-48" value={mes} onChange={e => e.target.value && setMes(e.target.value)} aria-label="Mes" />
@@ -83,7 +83,7 @@ function SummaryCard({ label, value, icon: Icon, highlight = false }: { label: s
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-stone-500">{label}</p>
-          <p className="mt-2 text-3xl font-black text-stone-900">{value === undefined ? '—' : formatQ(value)}</p>
+          <p className="mt-2 text-3xl font-bold text-stone-900">{value === undefined ? '—' : formatQ(value)}</p>
         </div>
         <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Icon size={20} /></div>
       </div>
@@ -95,7 +95,7 @@ function GastosTable({ title, items, total, unidad, periodoLabel }: { title: str
   const formatCantidad = (i: GastoItem) => unidad === 'lb' ? `${i.cantidad.toFixed(2)} lb` : `${i.cantidad} bolsas`
   return (
     <div className="card overflow-hidden">
-      <div className="border-b border-stone-200 p-4"><h4 className="font-black">{title}</h4></div>
+      <div className="border-b border-stone-200 p-4"><h4 className="font-bold">{title}</h4></div>
       {items.length === 0 ? (
         <p className="p-6 text-center text-sm text-stone-500">Sin compras de {title.toLowerCase()} en {periodoLabel}.</p>
       ) : (
@@ -126,8 +126,8 @@ function GastosTable({ title, items, total, unidad, periodoLabel }: { title: str
             </tbody>
             <tfoot>
               <tr className="border-t border-stone-200 bg-stone-50">
-                <td className="px-4 py-3 font-black" colSpan={3}>Total {title.toLowerCase()}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-right font-black text-stone-900">{formatQ(total)}</td>
+                <td className="px-4 py-3 font-bold" colSpan={3}>Total {title.toLowerCase()}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right font-bold text-stone-900">{formatQ(total)}</td>
               </tr>
             </tfoot>
           </table>

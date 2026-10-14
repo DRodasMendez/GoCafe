@@ -42,14 +42,14 @@ export default function ProduccionDetailPage() {
       <div className="flex items-center gap-4">
         <Link to="/produccion" className="rounded-xl border border-stone-200 bg-white p-2.5"><ArrowLeft size={18} /></Link>
         <div className="flex-1">
-          <h2 className="flex items-center gap-2 text-2xl font-black">{isGourmet ? <Coffee size={22} className="text-amber-600" /> : <Blend size={22} className="text-amber-600" />} {production.code}</h2>
+          <h2 className="page-title flex items-center gap-2">{isGourmet ? <Coffee size={22} className="text-amber-600" /> : <Blend size={22} className="text-amber-600" />} {production.code}</h2>
           <p className="text-sm text-stone-500">{isGourmet ? 'Producción Gourmet' : 'Producción Blend'} · Finalizada el {production.finalizedAt ? DATE_FORMAT.format(new Date(production.finalizedAt)) : '—'}</p>
         </div>
         <span className="rounded-lg bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">Terminada</span>
       </div>
 
       <div className="card p-6">
-        <h3 className="mb-4 font-black">Trazabilidad del lote</h3>
+        <h3 className="mb-4 font-bold">Trazabilidad del lote</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Stat label="Fecha" value={DATE_FORMAT.format(new Date(production.fecha))} />
           {isGourmet ? (
@@ -78,7 +78,7 @@ export default function ProduccionDetailPage() {
             </>
           )}
         </div>
-        <h3 className="mb-4 mt-6 font-black">Merma por paso</h3>
+        <h3 className="mb-4 mt-6 font-bold">Merma por paso</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="En trillado" value={`${merma.mermaTrillado.toFixed(2)} lb`} />
           <Stat label="En tueste" value={`${merma.mermaTueste.toFixed(2)} lb`} />
@@ -89,7 +89,7 @@ export default function ProduccionDetailPage() {
 
       {production.roasts.length > 0 && (
         <div className="card p-6">
-          <h3 className="mb-4 font-black">Tuestes</h3>
+          <h3 className="mb-4 font-bold">Tuestes</h3>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[360px] text-left text-sm">
               <thead>
@@ -115,7 +115,7 @@ export default function ProduccionDetailPage() {
 
       {production.notas && (
         <div className="card p-6">
-          <h3 className="mb-2 font-black">Notas</h3>
+          <h3 className="mb-2 font-bold">Notas</h3>
           <p className="text-sm text-stone-600">{production.notas}</p>
         </div>
       )}

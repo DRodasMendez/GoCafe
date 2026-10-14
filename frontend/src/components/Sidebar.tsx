@@ -2,13 +2,29 @@ import { Coffee, LayoutDashboard, LogOut, ReceiptText, Users, Wallet, Warehouse 
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { logout } from '../store/authStore'
 
-const items = [
-  { to: '/', label: 'Inicio', icon: LayoutDashboard, enabled: true },
-  { to: '/clientes', label: 'Clientes', icon: Users, enabled: true },
-  { to: '/produccion', label: 'Producción', icon: Coffee, enabled: true },
-  { to: '/inventario', label: 'Inventario', icon: Warehouse, enabled: true },
-  { to: '/facturacion', label: 'Facturación', icon: ReceiptText, enabled: true },
-  { to: '/gastos', label: 'Gastos', icon: Wallet, enabled: true },
+interface NavItem { to: string, label: string, icon: typeof Users }
+
+/** El menú también da el título de la barra superior (ver AdminLayout). */
+export const NAV_SECTIONS: { title: string | null, items: NavItem[] }[] = [
+  {
+    title: null,
+    items: [{ to: '/', label: 'Inicio', icon: LayoutDashboard }],
+  },
+  {
+    title: 'Operación',
+    items: [
+      { to: '/clientes', label: 'Clientes', icon: Users },
+      { to: '/produccion', label: 'Producción', icon: Coffee },
+      { to: '/inventario', label: 'Inventario', icon: Warehouse },
+    ],
+  },
+  {
+    title: 'Finanzas',
+    items: [
+      { to: '/facturacion', label: 'Cobros', icon: ReceiptText },
+      { to: '/gastos', label: 'Gastos', icon: Wallet },
+    ],
+  },
 ]
 
 export default function Sidebar({ open, onClose }: { open: boolean, onClose: () => void }) {
@@ -23,27 +39,30 @@ export default function Sidebar({ open, onClose }: { open: boolean, onClose: () 
     <>
       {open && <div className="fixed inset-0 z-40 bg-stone-950/50 lg:hidden" onClick={onClose} />}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 border-r border-stone-800 bg-stone-950 p-5 text-white transition-transform duration-200 lg:z-30 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-stone-800 bg-stone-950 p-4 text-white transition-transform duration-200 lg:z-30 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <Link to="/" onClick={onClose} className="mb-8 flex justify-center py-2">
-          <div className="flex h-40 w-40 items-center justify-center rounded-full bg-white p-2 shadow-lg shadow-black/30">
-            <img src="/images/cafelogo.jpg" alt="Logo GoCafe" className="h-full w-full rounded-full object-cover" />
+        <Link to="/" onClick={onClose} className="mb-6 flex items-center gap-3 rounded-xl px-2 py-2">
+          <img src="/images/cafelogo.jpg" alt="" className="h-11 w-11 rounded-full bg-white object-cover p-0.5" />
+          <div className="leading-tight">
+            <p className="font-bold">Go Café</p>
+            <p className="text-xs text-stone-400">Sistema de producción</p>
           </div>
         </Link>
-        <nav className="space-y-1.5">
-          {items.map(({ to, label, icon: Icon, enabled }) => enabled ? (
-            <NavLink key={label} to={to} end={to === '/'} onClick={onClose} className={({isActive}) => `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${isActive ? 'bg-amber-400 text-stone-950' : 'text-stone-300 hover:bg-stone-900 hover:text-white'}`}>
-              <Icon size={18} /> {label}
-            </NavLink>
-          ) : (
-            <div key={label} className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm text-stone-600">
-              <span className="flex items-center gap-3"><Icon size={18} /> {label}</span><span className="text-[10px] uppercase">pronto</span>
+        <nav className="flex-1 space-y-5 overflow-y-auto">
+          {NAV_SECTIONS.map(section => (
+            <div key={section.title ?? 'inicio'}>
+              {section.title && <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-500">{section.title}</p>}
+              <div className="space-y-1">
+                {section.items.map(({ to, label, icon: Icon }) => (
+                  <NavLink key={to} to={to} end={to === '/'} onClick={onClose} className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${isActive ? 'bg-amber-400 text-stone-950' : 'text-stone-300 hover:bg-stone-900 hover:text-white'}`}>
+                    <Icon size={18} /> {label}
+                  </NavLink>
+                ))}
+              </div>
             </div>
           ))}
         </nav>
-        <div className="absolute bottom-5 left-5 right-5">
-          <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone-400 hover:bg-stone-900 hover:text-white"><LogOut size={18}/> Cerrar sesión</button>
-        </div>
+        <button onClick={handleLogout} className="mt-4 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone-400 hover:bg-stone-900 hover:text-white"><LogOut size={18} /> Cerrar sesión</button>
       </aside>
     </>
   )

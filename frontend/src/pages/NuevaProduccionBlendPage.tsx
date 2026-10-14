@@ -241,7 +241,7 @@ function BlendForm({ id }: { id?: string }) {
       <div className="flex items-center gap-4">
         <Link to="/produccion" className="rounded-xl border border-stone-200 bg-white p-2.5"><ArrowLeft size={18} /></Link>
         <div className="flex-1">
-          <h2 className="text-2xl font-black">Producción Blend</h2>
+          <h2 className="page-title">Producción Blend</h2>
           <p className="text-sm text-stone-500">35% Pergamino + 65% Oro o Natural</p>
         </div>
         <span className="rounded-lg bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700">Lote {existing?.code ?? 'Se asigna al guardar'}</span>
@@ -334,7 +334,7 @@ function BlendForm({ id }: { id?: string }) {
             return (
               <div className="card p-6" key={r.id}>
                 <div className="mb-5 flex items-center justify-between">
-                  <div><h3 className="font-black">Tueste No. {r.id}</h3><p className="text-sm text-stone-500">Máximo permitido: {MAX_ROAST_LB} lb por servicio.</p></div>
+                  <div><h3 className="font-bold">Tueste No. {r.id}</h3><p className="text-sm text-stone-500">Máximo permitido: {MAX_ROAST_LB} lb por servicio.</p></div>
                   <button className="rounded-xl border border-stone-200 p-2 text-stone-500" onClick={() => removeRoast(r.id)}><Trash2 size={17} /></button>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -385,12 +385,12 @@ function BlendForm({ id }: { id?: string }) {
         <section className="card p-6">
           <SectionTitle title="5. Empaque" subtitle="Presentación fija de 350 g por bolsa. El cálculo se actualiza con el peso real obtenido." />
           <div className="mb-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Peso convertido" value={`${suggestedPackaging.grams.toFixed(1)} g`} />
-            <Stat label="Sugerencia automática" value={`${suggestedPackaging.fullBags} bolsas`} />
-            <Stat label="Sobrante sugerido" value={`${suggestedPackaging.remainderGrams.toFixed(1)} g`} />
+            <Stat label="Peso final en gramos" value={`${suggestedPackaging.grams.toFixed(1)} g`} />
+            <Stat label="Bolsas estimadas" value={`${suggestedPackaging.fullBags} bolsas`} />
+            <Stat label="Sobrante estimado" value={`${suggestedPackaging.remainderGrams.toFixed(1)} g`} />
           </div>
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-            <h4 className="font-black text-stone-900">Resultado real del empaque</h4>
+            <h4 className="font-bold text-stone-900">Resultado real del empaque</h4>
             <p className="mt-1 text-sm text-stone-600">Corrige estos valores si el resultado físico fue diferente al cálculo sugerido.</p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Bolsas completas (350 g)"><input type="number" min="0" step="1" className="input" placeholder={String(suggestedPackaging.fullBags)} value={actualFullBags} onChange={e => { setPageError(''); setActualFullBags(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownCircle, ArrowUpCircle, Blend, CheckCircle2, Coffee, Loader2, Package, PackageCheck, Pencil, Warehouse, X, XCircle } from 'lucide-react'
+import { ArrowDownCircle, ArrowUpCircle, Blend, Coffee, Loader2, Package, PackageCheck, Pencil, Warehouse, X } from 'lucide-react'
 import { RAW_MATERIAL_LABELS, ROAST_TYPES, ROAST_TYPE_LABELS } from '../types/production'
 import type { RawMaterialType, RoastType } from '../types/production'
 import { PACKAGE_TYPES } from '../types/order'
@@ -36,19 +36,18 @@ import {
   type InventoryMovement,
   type StockMaterial,
 } from '../store/inventoryStore'
-import DatePickerField from '../components/DatePickerField'
 import { formatQ, parseCosto } from '../utils/money'
 import { errorMessage, toast } from '../components/ui/feedback'
+import MonthFilter from '../components/MonthFilter'
 
 const DATE_TIME_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-const DAY_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
+const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
 const INVENTORY_TABS = [
   { id: 'materia-prima', label: 'Materia prima', icon: Coffee },
-  { id: 'grano-cafeteria', label: 'Café en grano (cafetería)', icon: Coffee },
-  { id: 'terminado-gourmet', label: 'Terminado — Gourmet', icon: PackageCheck },
-  { id: 'terminado-blend', label: 'Terminado — Blend', icon: Blend },
-  { id: 'empaque', label: 'Empaque (bolsas)', icon: Package },
+  { id: 'grano-cafeteria', label: 'Café en grano', icon: Coffee },
+  { id: 'terminado', label: 'Producto terminado', icon: PackageCheck },
+  { id: 'empaque', label: 'Bolsas', icon: Package },
 ] as const
 
 type InventoryTab = (typeof INVENTORY_TABS)[number]['id']
@@ -70,6 +69,12 @@ export default function InventarioPage() {
   const [entradaEmpaque, setEntradaEmpaque] = useState<EmpaqueStockItem | null>(null)
   const [editarEmpaque, setEditarEmpaque] = useState<EmpaqueStockItem | null>(null)
 
+  const alertCount: Partial<Record<InventoryTab, number>> = {
+    'materia-prima': alerts.filter(a => a.material !== 'granoCafeteria').length,
+    'grano-cafeteria': alerts.filter(a => a.material === 'granoCafeteria').length,
+    empaque: empaqueAlerts.length,
+  }
+
   const blendBags = bagsEquivalent(stock.blendFinishedLb)
   const sueltoAlcanzaPara = Math.floor((gourmetEmpacado.sueltoGramos + 3) / BAG_GRAMS)
 
@@ -80,37 +85,13 @@ export default function InventarioPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-black">Inventario de producción</h2>
-        <p className="mt-1 text-sm text-stone-500">Materia prima, café en grano, producto terminado de Gourmet y Blend, y bolsas de empaque.</p>
-      </div>
-
-      {[...alerts, ...empaqueAlerts].length > 0 ? (
-        <div className="space-y-2">
-          {alerts.map((a, i) => (
-            <div key={`mp-${i}`} className="flex gap-2 text-sm font-medium text-red-700">
-              <XCircle className="mt-0.5 shrink-0" size={18} />
-              <span><b>{a.title}.</b> {a.message}</span>
-            </div>
-          ))}
-          {empaqueAlerts.map((a, i) => (
-            <div key={`emp-${i}`} className="flex gap-2 text-sm font-medium text-red-700">
-              <XCircle className="mt-0.5 shrink-0" size={18} />
-              <span><b>{a.title}.</b> {a.message}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex gap-2 text-sm font-medium text-emerald-700">
-          <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
-          <span>Sin alertas: materia prima, café en grano y bolsas están por encima de su mínimo.</span>
-        </div>
-      )}
+      <h2 className="page-title">Inventario</h2>
 
       <div className="card overflow-hidden">
-        <div className="flex flex-wrap border-b border-stone-200 p-3">
+        {/* Las alertas no se repiten aquí en una lista (ya están en Inicio): la pestaña con algo bajo el mínimo lleva un punto rojo y la tarjeta se pinta de rojo. */}
+        <div className="flex flex-wrap gap-1 border-b border-stone-200 p-3">
           {INVENTORY_TABS.map(t => (
-            <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} icon={t.icon} label={t.label} />
+            <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} icon={t.icon} label={t.label} alert={alertCount[t.id] ?? 0} />
           ))}
         </div>
 
@@ -130,7 +111,7 @@ export default function InventarioPage() {
                   />
                 ))}
               </div>
-              <MonthlyHistory title="Historial de movimientos — Materia prima" materials={['pergamino', 'oro', 'natural']} showCosto />
+              <MonthlyHistory title="Movimientos de materia prima" materials={['pergamino', 'oro', 'natural']} showCosto />
             </>
           )}
 
@@ -144,95 +125,54 @@ export default function InventarioPage() {
                 {ROAST_TYPES.map(tipo => (
                   <div key={tipo} className="card p-5">
                     <div className="flex items-start justify-between">
-                      <div><p className="text-sm text-stone-500">Tueste {ROAST_TYPE_LABELS[tipo]}</p><p className="mt-2 text-2xl font-black text-stone-900">{stock.granoCafeteria[tipo].toFixed(2)} lb</p></div>
+                      <div><p className="text-sm text-stone-500">Tueste {ROAST_TYPE_LABELS[tipo]}</p><p className="mt-2 text-2xl font-bold text-stone-900">{stock.granoCafeteria[tipo].toFixed(2)} lb</p></div>
                       <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Coffee size={20} /></div>
                     </div>
                   </div>
                 ))}
               </div>
               <button className="btn-secondary" onClick={() => setRetiroGranoOpen(true)}><ArrowDownCircle size={16} /> Enviar a cafetería</button>
-              <MonthlyHistory title="Historial de movimientos — Café en grano" materials={['granoCafeteria_claro', 'granoCafeteria_medio', 'granoCafeteria_oscuro']} />
+              <MonthlyHistory title="Movimientos de café en grano" materials={['granoCafeteria_claro', 'granoCafeteria_medio', 'granoCafeteria_oscuro']} />
             </>
           )}
 
-          {tab === 'terminado-gourmet' && (
+          {tab === 'terminado' && (
             <>
-              <p className="text-sm text-stone-500">Es el mismo café Gourmet; se embolsa en la producción en bolsa Comercial o Especial.</p>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="card p-5">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-stone-500">Gourmet empacado</p>
-                      <p className="mt-2 text-2xl font-black text-stone-900">{gourmetEmpacado.comercial + gourmetEmpacado.especial} bolsas <span className="text-base font-semibold text-stone-400">· {stock.gourmetLb.toFixed(2)} lb</span></p>
+                      <p className="stat-value mt-2">{gourmetEmpacado.comercial + gourmetEmpacado.especial} bolsas <span className="text-base font-semibold text-stone-400">· {stock.gourmetLb.toFixed(2)} lb</span></p>
                     </div>
-                    <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><PackageCheck size={20} /></div>
+                    <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Coffee size={20} /></div>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Comercial</p><p className="mt-1 text-xl font-black text-stone-900">{gourmetEmpacado.comercial}</p></div>
-                    <div className="rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Especial</p><p className="mt-1 text-xl font-black text-stone-900">{gourmetEmpacado.especial}</p></div>
+                    <div className="rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Comercial</p><p className="mt-1 text-xl font-bold text-stone-900">{gourmetEmpacado.comercial}</p></div>
+                    <div className="rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Especial</p><p className="mt-1 text-xl font-bold text-stone-900">{gourmetEmpacado.especial}</p></div>
                   </div>
                   <p className="mt-3 text-xs text-stone-500">
-                    Café suelto sin empacar: <b className="text-stone-700">{gourmetEmpacado.sueltoGramos.toFixed(1)} g</b>
+                    Sobrante sin empacar: <b className="text-stone-700">{gourmetEmpacado.sueltoGramos.toFixed(1)} g</b>
                     {sueltoAlcanzaPara > 0 && <> — alcanza para {sueltoAlcanzaPara} bolsa{sueltoAlcanzaPara === 1 ? '' : 's'} más</>}
                   </p>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    <button className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-40" disabled={gourmetEmpacado.comercial + gourmetEmpacado.especial <= 0} onClick={() => setGourmetSalidaOpen(true)}><ArrowDownCircle size={16} /> Enviar a cafetería</button>
-                    <button className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-40" disabled={sueltoAlcanzaPara <= 0} onClick={() => setEmpacarSobranteOpen(true)}><Package size={16} /> Empacar sobrante</button>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Bolsas vacías: {empaqueGourmet.map(i => `${i.label.replace(' (Producción propia)', '').replace('Bolsa ', '')} ${i.cantidad}`).join(' · ')}
+                  </p>
+                  <div className="mt-4 grid gap-2 xl:grid-cols-2">
+                    <button className="btn-secondary w-full" disabled={gourmetEmpacado.comercial + gourmetEmpacado.especial <= 0} onClick={() => setGourmetSalidaOpen(true)}><ArrowDownCircle size={16} /> Enviar a cafetería</button>
+                    <button className="btn-secondary w-full" disabled={sueltoAlcanzaPara <= 0} onClick={() => setEmpacarSobranteOpen(true)}><Package size={16} /> Empacar sobrante</button>
                   </div>
                 </div>
-                <div className="card p-5">
-                  <p className="text-sm text-stone-500">Bolsas vacías en bodega (para los próximos lotes)</p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    {empaqueGourmet.map(item => (
-                      <div key={item.tipo} className="rounded-xl bg-stone-100 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{item.label.replace(' (Producción propia)', '')}</p>
-                        <p className="mt-1 text-2xl font-black text-stone-900">{item.cantidad}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <button type="button" className="mt-3 text-xs font-semibold text-amber-700 hover:underline" onClick={() => setTab('empaque')}>
-                    Comprar más / ver historial →
-                  </button>
-                </div>
+                <FinishedStockCard label="Blend empacado" icon={Blend} lb={stock.blendFinishedLb} bags={blendBags} bolsasVacias={bolsasBlendVacias} onSalida={() => setBlendSalidaOpen(true)} actionLabel="Enviar al mayoreo" />
               </div>
-              <MonthlyHistory title="Historial de movimientos — Gourmet" materials={['gourmet']} />
-            </>
-          )}
-
-          {tab === 'terminado-blend' && (
-            <>
-              <div className="grid gap-4 md:grid-cols-2">
-                <FinishedStockCard label="Blend" icon={Blend} lb={stock.blendFinishedLb} bags={blendBags} onSalida={() => setBlendSalidaOpen(true)} actionLabel="Enviar al mayoreo" />
-                <div className="card p-5">
-                  <p className="text-sm text-stone-500">Bolsas de Blend vacías en bodega (para los próximos lotes)</p>
-                  <p className="mt-2 text-2xl font-black text-stone-900">{bolsasBlendVacias}</p>
-                  <button type="button" className="mt-3 text-xs font-semibold text-amber-700 hover:underline" onClick={() => setTab('empaque')}>
-                    Comprar más / ver historial →
-                  </button>
-                </div>
-              </div>
-              <MonthlyHistory title="Historial de movimientos — Blend" materials={['blendBolsas']} />
+              <MonthlyHistory title="Movimientos de producto terminado" materials={['gourmet', 'blendBolsas']} />
             </>
           )}
 
           {tab === 'empaque' && (
             <>
-              <div>
-                <p className="mb-3 text-sm font-semibold text-stone-700">Clientes — empaque del café que se procesa para cada cliente</p>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {empaqueClientes.map(item => (
-                    <EmpaqueCard key={item.tipo} item={item} onEntrada={() => setEntradaEmpaque(item)} onEditar={() => setEditarEmpaque(item)} />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-3 text-sm font-semibold text-stone-700">Producción propia — empaque de Gourmet y Blend</p>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {empaqueProduccion.map(item => (
-                    <EmpaqueCard key={item.tipo} item={item} onEntrada={() => setEntradaEmpaque(item)} onEditar={() => setEditarEmpaque(item)} />
-                  ))}
-                </div>
-              </div>
+              <EmpaqueTable title="Para clientes" items={empaqueClientes} onEntrada={setEntradaEmpaque} onEditar={setEditarEmpaque} />
+              <EmpaqueTable title="Para producción propia (Gourmet y Blend)" items={empaqueProduccion} onEntrada={setEntradaEmpaque} onEditar={setEditarEmpaque} />
               <EmpaqueHistory />
             </>
           )}
@@ -258,47 +198,50 @@ export default function InventarioPage() {
   )
 }
 
-function TabButton({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: typeof Coffee, label: string }) {
+function TabButton({ active, onClick, icon: Icon, label, alert = 0 }: { active: boolean, onClick: () => void, icon: typeof Coffee, label: string, alert?: number }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${active ? 'bg-stone-900 text-white' : 'text-stone-500 hover:bg-stone-100'}`}
+      className={`relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${active ? 'bg-stone-900 text-white' : 'text-stone-500 hover:bg-stone-100'}`}
+      title={alert > 0 ? `${alert} ${alert === 1 ? 'alerta' : 'alertas'}: por debajo del mínimo` : undefined}
     >
       <Icon size={16} /> {label}
+      {alert > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{alert}</span>}
     </button>
   )
 }
 
 /** Texto "Mínimo: …" que al hacer clic se vuelve un campo editable para cambiar el umbral de alerta. */
-function MinimoEditor({ value, display, onSave }: { value: number, display: string, onSave: (v: number) => Promise<void> }) {
+function MinimoEditor({ value, display, onSave, compact = false }: { value: number, display: string, onSave: (v: number) => Promise<void>, compact?: boolean }) {
   const [editing, setEditing] = useState(false)
   const [str, setStr] = useState(String(value))
 
+  const save = async () => {
+    try {
+      await onSave(Number(str) || 0)
+      setEditing(false)
+      toast.success('Mínimo actualizado.')
+    } catch (err) {
+      toast.error(errorMessage(err, 'No se pudo actualizar el mínimo.'))
+    }
+  }
+
   if (!editing) {
     return (
-      <button className="mt-3 flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700" onClick={() => { setStr(String(value)); setEditing(true) }}>
-        Mínimo: {display}
+      <button className={`${compact ? '' : 'mt-3'} group flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-amber-700`} title="Cambiar el mínimo para la alerta" onClick={() => { setStr(String(value)); setEditing(true) }}>
+        {compact ? display : `Mínimo: ${display}`} <Pencil size={11} className="opacity-50 group-hover:opacity-100" />
       </button>
     )
   }
   return (
-    <div className="mt-3 flex items-center gap-2">
-      <input type="number" min="0" step="1" autoFocus className="input" value={str} onChange={e => setStr(e.target.value)} />
-      <button
-        className="btn-secondary shrink-0 !px-3"
-        onClick={async () => {
-          try {
-            await onSave(Number(str) || 0)
-            setEditing(false)
-            toast.success('Mínimo actualizado.')
-          } catch (err) {
-            toast.error(errorMessage(err, 'No se pudo actualizar el mínimo.'))
-          }
-        }}
-      >
-        Guardar
-      </button>
+    <div className={`${compact ? 'max-w-48' : 'mt-3'} flex items-center gap-2`}>
+      <input
+        type="number" min="0" step="1" autoFocus className="input !py-1.5" value={str}
+        onChange={e => setStr(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') void save(); if (e.key === 'Escape') setEditing(false) }}
+      />
+      <button className="btn-secondary shrink-0 !min-h-0 !px-3 !py-1.5" onClick={save}>Guardar</button>
     </div>
   )
 }
@@ -311,7 +254,7 @@ function GranoTotalCard({ totalLb, thresholdLb }: { totalLb: number, thresholdLb
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-stone-500">Total en grano (todos los tuestes)</p>
-          <p className={`mt-2 text-3xl font-black ${low ? 'text-red-600' : 'text-stone-900'}`}>{totalLb.toFixed(2)} <span className="text-base font-semibold text-stone-400">lb</span></p>
+          <p className={`mt-2 text-3xl font-bold ${low ? 'text-red-600' : 'text-stone-900'}`}>{totalLb.toFixed(2)} <span className="text-base font-semibold text-stone-400">lb</span></p>
         </div>
         <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Coffee size={20} /></div>
       </div>
@@ -335,7 +278,7 @@ function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, 
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-stone-500">{RAW_MATERIAL_LABELS[material]}</p>
-          <p className={`mt-2 text-3xl font-black ${low ? 'text-red-600' : 'text-stone-900'}`}>{stockLb.toFixed(2)} <span className="text-base font-semibold text-stone-400">lb</span></p>
+          <p className={`mt-2 text-3xl font-bold ${low ? 'text-red-600' : 'text-stone-900'}`}>{stockLb.toFixed(2)} <span className="text-base font-semibold text-stone-400">lb</span></p>
         </div>
         <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Coffee size={20} /></div>
       </div>
@@ -348,35 +291,51 @@ function RawMaterialCard({ material, stockLb, thresholdLb, onEntrada, onEditar, 
         disabled={stockLb <= 0}
         onClick={onEditar}
       >
-        <Pencil size={12} /> Editar (restar una cantidad)
+        <Pencil size={12} /> Ajustar existencia
       </button>
     </div>
   )
 }
 
-function EmpaqueCard({ item, onEntrada, onEditar }: { item: EmpaqueStockItem, onEntrada: () => void, onEditar: () => void }) {
-  const low = item.minimo != null && item.cantidad < item.minimo
-
+/** Bolsas en tabla (no en tarjetas): con 9 tipos, una fila por tipo se lee y se compara mucho mejor. */
+function EmpaqueTable({ title, items, onEntrada, onEditar }: { title: string, items: EmpaqueStockItem[], onEntrada: (item: EmpaqueStockItem) => void, onEditar: (item: EmpaqueStockItem) => void }) {
   return (
-    <div className={`card p-5 ${low ? 'border-red-300' : ''}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-stone-500">{item.label}</p>
-          <p className={`mt-2 text-3xl font-black ${low ? 'text-red-600' : 'text-stone-900'}`}>{item.cantidad} <span className="text-base font-semibold text-stone-400">unidades</span></p>
-        </div>
-        <div className={`rounded-xl p-3 ${low ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}><Package size={20} /></div>
+    <div className="card overflow-hidden">
+      <div className="border-b border-stone-200 p-4"><h4 className="font-bold">{title}</h4></div>
+      <div className="overflow-x-auto">
+        {/* Anchos fijos para que las dos tablas (clientes y producción propia) queden alineadas. */}
+        <table className="w-full min-w-[600px] table-fixed text-left text-sm">
+          <thead>
+            <tr className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+              <th className="w-[30%] px-4 pb-2 pt-3">Tipo de bolsa</th>
+              <th className="w-[22%] px-4 pb-2 pt-3">Existencia</th>
+              <th className="w-[20%] px-4 pb-2 pt-3">Mínimo</th>
+              <th className="w-[28%] px-4 pb-2 pt-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {items.map(item => {
+              const low = item.minimo != null && item.cantidad < item.minimo
+              return (
+                <tr key={item.tipo} className={low ? 'bg-red-50/60' : ''}>
+                  <td className="px-4 py-3 font-medium text-stone-900">{item.label.replace(' (Producción propia)', '')}</td>
+                  <td className={`whitespace-nowrap px-4 py-3 font-bold ${low ? 'text-red-600' : 'text-stone-900'}`}>
+                    {item.cantidad} bolsas
+                    {low && <span className="ml-2 rounded-md bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">Bajo el mínimo</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <MinimoEditor compact value={item.minimo ?? 0} display={item.minimo != null ? `${item.minimo} bolsas` : 'Sin configurar'} onSave={v => updateEmpaqueUmbral(item.tipo, v)} />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
+                    <button className="icon-btn mr-1.5" title="Ajustar existencia" aria-label={`Ajustar existencia de ${item.label}`} disabled={item.cantidad <= 0} onClick={() => onEditar(item)}><Pencil size={15} /></button>
+                    <button className="btn-primary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => onEntrada(item)}><ArrowUpCircle size={14} /> Entrada</button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
-
-      <MinimoEditor value={item.minimo ?? 0} display={item.minimo != null ? `${item.minimo} bolsas` : 'sin configurar'} onSave={v => updateEmpaqueUmbral(item.tipo, v)} />
-
-      <button className="btn-primary mt-4 w-full" onClick={onEntrada}><ArrowUpCircle size={16} /> Registrar entrada</button>
-      <button
-        className="mt-2 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
-        disabled={item.cantidad <= 0}
-        onClick={onEditar}
-      >
-        <Pencil size={12} /> Editar (restar una cantidad)
-      </button>
     </div>
   )
 }
@@ -386,44 +345,40 @@ function EmpaqueHistory() {
   const empaqueStock = useEmpaqueStock()
   const [corrigiendo, setCorrigiendo] = useState<EmpaqueMovement | null>(null)
   const [tipoFiltro, setTipoFiltro] = useState<string>('all')
-  const [dia, setDia] = useState(todayISODate())
-  const [verTodo, setVerTodo] = useState(false)
+  const [mes, setMes] = useState(todayISODate().slice(0, 7))
 
   const shown = useMemo(() => {
     let rows = allMovements
     if (tipoFiltro !== 'all') rows = rows.filter(m => m.tipoEmpaque === tipoFiltro)
-    if (!verTodo) rows = rows.filter(m => localISODate(new Date(m.fecha)) === dia)
+    if (mes) rows = rows.filter(m => localISODate(new Date(m.fecha)).startsWith(mes))
     return rows
-  }, [allMovements, tipoFiltro, verTodo, dia])
+  }, [allMovements, tipoFiltro, mes])
 
   const labelFor = (tipo: string) => empaqueStock.find(e => e.tipo === tipo)?.label ?? tipo
 
   return (
     <div className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 p-4">
-        <h4 className="font-black">Historial de movimientos — Empaque</h4>
+        <h4 className="font-bold">Movimientos de bolsas</h4>
         <div className="flex flex-wrap items-center gap-2">
           <div className="w-52">
             <select className="select !py-2 text-sm" value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}>
-              <option value="all">Todos</option>
+              <option value="all">Todas las bolsas</option>
               {empaqueStock.map(e => <option key={e.tipo} value={e.tipo}>{e.label}</option>)}
             </select>
           </div>
-          {!verTodo && <div className="w-40"><DatePickerField value={dia} onChange={setDia} /></div>}
-          <button type="button" className="text-xs font-semibold text-amber-700 hover:underline" onClick={() => setVerTodo(v => !v)}>
-            {verTodo ? 'Ver por día' : 'Ver todo el historial'}
-          </button>
+          <MonthFilter value={mes} onChange={setMes} />
         </div>
       </div>
 
       {shown.length === 0 ? (
         <div className="flex min-h-32 flex-col items-center justify-center p-6 text-center">
           <Warehouse size={22} className="mb-2 text-stone-300" />
-          <p className="text-sm text-stone-500">{verTodo ? 'Sin movimientos registrados.' : `Sin movimientos el ${DAY_FORMAT.format(new Date(dia + 'T00:00:00'))}.`}</p>
+          <p className="text-sm text-stone-500">{mes ? `Sin movimientos en ${MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`))}.` : 'Sin movimientos registrados.'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="text-xs font-semibold uppercase tracking-wide text-stone-500">
                 <th className="px-4 pb-2 pt-4">Fecha</th>
@@ -445,7 +400,7 @@ function EmpaqueHistory() {
                       {m.tipo === 'entrada' ? <ArrowUpCircle size={13} /> : <ArrowDownCircle size={13} />} {m.tipo === 'entrada' ? 'Entrada' : 'Salida'}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">{m.cantidad} unidades</td>
+                  <td className="px-4 py-2.5">{m.cantidad} bolsas</td>
                   <td className="whitespace-nowrap px-4 py-2.5"><CostoCell mov={m} unidad="bolsa" onCorregir={() => setCorrigiendo(m)} /></td>
                   <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante}</td>
@@ -511,7 +466,7 @@ function EmpaqueEntradaModal({ item, onClose }: { item: EmpaqueStockItem, onClos
     <Modal title={`Entrada de ${item.label}`} onClose={onClose}>
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
       <form onSubmit={handleSubmit}>
-        <label className="block"><span className="label">Cantidad (unidades)</span><input type="number" min="0" step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
+        <label className="block"><span className="label">Cantidad (bolsas)</span><input type="number" min="0" step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
         <CostoTotalField value={costo} onChange={v => { setError(''); setCosto(v) }} cantidad={Math.floor(Number(cantidad) || 0)} unidad="bolsa" />
         <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Compra a proveedor..." value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
         <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
@@ -533,7 +488,7 @@ function EmpaqueEditarModal({ item, onClose }: { item: EmpaqueStockItem, onClose
     if (submitting) return
     const cantidadNum = Math.floor(Number(cantidad) || 0)
     if (cantidadNum <= 0) { setError('Ingresa una cantidad mayor que 0.'); return }
-    if (cantidadNum > item.cantidad) { setError(`Solo hay ${item.cantidad} unidades disponibles.`); return }
+    if (cantidadNum > item.cantidad) { setError(`Solo hay ${item.cantidad} bolsas disponibles.`); return }
     setSubmitting(true)
     try {
       await registrarSalidaEmpaque(item.tipo, cantidadNum, motivo.trim() || 'Corrección de captura')
@@ -546,11 +501,11 @@ function EmpaqueEditarModal({ item, onClose }: { item: EmpaqueStockItem, onClose
   }
 
   return (
-    <Modal title={`Editar stock de ${item.label}`} onClose={onClose}>
+    <Modal title={`Ajustar existencia de ${item.label}`} onClose={onClose}>
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
-      <p className="mb-4 text-sm text-stone-500">Stock actual: <b className="text-stone-700">{item.cantidad} unidades</b>. Usa esto cuando se capturó de más en una entrada — ingresa cuánto restar (el exceso), no el total correcto.</p>
+      <p className="mb-4 text-sm text-stone-500">Existencia actual: <b className="text-stone-700">{item.cantidad} bolsas</b>. Para corregir una entrada capturada de más: escribe cuánto sobra (lo que hay que restar), no el total correcto.</p>
       <form onSubmit={handleSubmit}>
-        <label className="block"><span className="label">Cantidad a restar (unidades)</span><input type="number" min="0" max={item.cantidad} step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
+        <label className="block"><span className="label">Cantidad a restar (bolsas)</span><input type="number" min="0" max={item.cantidad} step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
         <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Corrección de captura" value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
         <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
           {submitting && <Loader2 size={16} className="animate-spin" />} Restar del inventario
@@ -560,18 +515,19 @@ function EmpaqueEditarModal({ item, onClose }: { item: EmpaqueStockItem, onClose
   )
 }
 
-function FinishedStockCard({ label, lb, bags, onSalida, icon: Icon = PackageCheck, actionLabel = 'Enviar a cafetería' }: { label: string, lb: number, bags: { fullBags: number, remainderGrams: number }, onSalida: () => void, icon?: typeof PackageCheck, actionLabel?: string }) {
+function FinishedStockCard({ label, lb, bags, bolsasVacias, onSalida, icon: Icon = PackageCheck, actionLabel = 'Enviar a cafetería' }: { label: string, lb: number, bags: { fullBags: number, remainderGrams: number }, bolsasVacias?: number, onSalida: () => void, icon?: typeof PackageCheck, actionLabel?: string }) {
   return (
-    <div className="card p-5">
+    <div className="card flex flex-col p-5">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-stone-500">{label}</p>
-          <p className="mt-2 text-2xl font-black text-stone-900">{bags.fullBags} bolsas empacadas <span className="text-base font-semibold text-stone-400">· {lb.toFixed(2)} lb</span></p>
-          <p className="mt-1 text-xs text-stone-500">Café suelto sin empacar (sobrante): {bags.remainderGrams.toFixed(1)} g</p>
+          <p className="stat-value mt-2">{bags.fullBags} bolsas <span className="text-base font-semibold text-stone-400">· {lb.toFixed(2)} lb</span></p>
         </div>
         <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><Icon size={20} /></div>
       </div>
-      <button className="btn-secondary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-40" disabled={bags.fullBags <= 0} onClick={onSalida}><ArrowDownCircle size={16} /> {actionLabel}</button>
+      <p className="mt-3 text-xs text-stone-500">Sobrante sin empacar: <b className="text-stone-700">{bags.remainderGrams.toFixed(1)} g</b></p>
+      {bolsasVacias !== undefined && <p className="mt-1 text-xs text-stone-500">Bolsas vacías: {bolsasVacias}</p>}
+      <button className="btn-secondary mt-4 w-full" disabled={bags.fullBags <= 0} onClick={onSalida}><ArrowDownCircle size={16} /> {actionLabel}</button>
     </div>
   )
 }
@@ -659,8 +615,7 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
   const allMovements = useMovements()
   const [corrigiendo, setCorrigiendo] = useState<InventoryMovement | null>(null)
   const [materialFiltro, setMaterialFiltro] = useState<StockMaterial | 'all'>('all')
-  const [dia, setDia] = useState(todayISODate())
-  const [verTodo, setVerTodo] = useState(false)
+  const [mes, setMes] = useState(todayISODate().slice(0, 7))
 
   const relevant = useMemo(() => allMovements.filter(m => materials.includes(m.material)), [allMovements, materials])
   const hasMaterialFilter = materials.length > 1
@@ -668,14 +623,14 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
   const shown = useMemo(() => {
     let rows = relevant
     if (hasMaterialFilter && materialFiltro !== 'all') rows = rows.filter(m => m.material === materialFiltro)
-    if (!verTodo) rows = rows.filter(m => localISODate(new Date(m.fecha)) === dia)
+    if (mes) rows = rows.filter(m => localISODate(new Date(m.fecha)).startsWith(mes))
     return rows
-  }, [relevant, hasMaterialFilter, materialFiltro, verTodo, dia])
+  }, [relevant, hasMaterialFilter, materialFiltro, mes])
 
   return (
     <div className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 p-4">
-        <h4 className="font-black">{title}</h4>
+        <h4 className="font-bold">{title}</h4>
         <div className="flex flex-wrap items-center gap-2">
           {hasMaterialFilter && (
             <div className="w-40"><select className="select !py-2 text-sm" value={materialFiltro} onChange={e => setMaterialFiltro(e.target.value as StockMaterial | 'all')}>
@@ -683,23 +638,18 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
               {materials.map(m => <option key={m} value={m}>{STOCK_LABELS[m]}</option>)}
             </select></div>
           )}
-          {!verTodo && <div className="w-40"><DatePickerField value={dia} onChange={setDia} /></div>}
-          {!hasMaterialFilter && (
-            <button type="button" className="text-xs font-semibold text-amber-700 hover:underline" onClick={() => setVerTodo(v => !v)}>
-              {verTodo ? 'Ver por día' : 'Ver todo el historial'}
-            </button>
-          )}
+          <MonthFilter value={mes} onChange={setMes} />
         </div>
       </div>
 
       {shown.length === 0 ? (
         <div className="flex min-h-32 flex-col items-center justify-center p-6 text-center">
           <Warehouse size={22} className="mb-2 text-stone-300" />
-          <p className="text-sm text-stone-500">{verTodo ? 'Sin movimientos registrados.' : `Sin movimientos el ${DAY_FORMAT.format(new Date(dia + 'T00:00:00'))}.`}</p>
+          <p className="text-sm text-stone-500">{mes ? `Sin movimientos en ${MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`))}.` : 'Sin movimientos registrados.'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="text-xs font-semibold uppercase tracking-wide text-stone-500">
                 <th className="px-4 pb-2 pt-4">Fecha</th>
@@ -756,7 +706,7 @@ function Modal({ title, onClose, children }: { title: string, onClose: () => voi
         onClick={e => e.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-black">{title}</h3>
+          <h3 className="text-lg font-bold">{title}</h3>
           <button className="icon-btn shrink-0" onClick={onClose} aria-label="Cerrar"><X size={16} /></button>
         </div>
         {children}
@@ -829,9 +779,9 @@ function EditarStockModal({ material, stockLb, onClose }: { material: RawMateria
   }
 
   return (
-    <Modal title={`Editar stock de ${RAW_MATERIAL_LABELS[material]}`} onClose={onClose}>
+    <Modal title={`Ajustar existencia de ${RAW_MATERIAL_LABELS[material]}`} onClose={onClose}>
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
-      <p className="mb-4 text-sm text-stone-500">Stock actual: <b className="text-stone-700">{stockLb.toFixed(2)} lb</b>. Usa esto cuando se capturó de más en una entrada — ingresa cuánto restar (el exceso), no el total correcto.</p>
+      <p className="mb-4 text-sm text-stone-500">Existencia actual: <b className="text-stone-700">{stockLb.toFixed(2)} lb</b>. Para corregir una entrada capturada de más: escribe cuánto sobra (lo que hay que restar), no el total correcto.</p>
       <form onSubmit={handleSubmit}>
         <label className="block"><span className="label">Cantidad a restar (lb)</span><input type="number" min="0" max={stockLb} step="0.01" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
         <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Corrección de captura" value={motivo} onChange={e => setMotivo(e.target.value)} /></label>

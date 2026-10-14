@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowLeft, Loader2, MapPin, Phone, Plus, Trash2, UserRou
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BAG_GRAMS, MAX_ROAST_LB, packagingFromLb } from '../utils/production'
 import { COFFEE_TYPE_LABELS, PACKAGE_TYPES, coffeeTypeHasCleaningStep, statusForCompletedStep, type CoffeeType, type Order, type PackageAllocation, type PackageType, type Roast } from '../types/order'
-import { createOrder, finalizeOrder, updateOrder, useOrder, useOrdersLoaded } from '../store/ordersStore'
+import { createOrder, deleteOrder, finalizeOrder, updateOrder, useOrder, useOrdersLoaded } from '../store/ordersStore'
 import { useClient, useClientsLoaded } from '../store/clientsStore'
 import OrderSummary from '../components/OrderSummary'
 import DatePickerField from '../components/DatePickerField'
@@ -268,7 +268,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     if ((Number(totalPrice) || 0) <= 0) {
       const ok = await confirmDialog({
         title: '¿Finalizar con total Q0.00?',
-        message: 'La factura saldrá en cero y la orden no quedará como pendiente de cobro.',
+        message: 'El comprobante saldrá en cero y la orden no quedará como pendiente de cobro.',
         confirmLabel: 'Finalizar de todas formas',
       })
       if (!ok) return
@@ -438,6 +438,20 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     setStep(target)
   }
 
+  const handleDelete = async () => {
+    if (!orderId) return
+    const folio = existingOrder?.orderNo ?? 'esta orden'
+    const ok = await confirmDialog({ title: `¿Eliminar la orden ${folio}?`, message: 'Se borra todo lo registrado en ella. Esta acción no se puede deshacer.', confirmLabel: 'Eliminar orden', danger: true })
+    if (!ok) return
+    try {
+      await deleteOrder(orderId)
+      toast.success(`Orden ${folio} eliminada.`)
+      navigate(`/clientes/${client.id}`, { replace: true })
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'No se pudo eliminar la orden.')
+    }
+  }
+
   const goPrev = async () => {
     setPageError('')
     try {
@@ -452,7 +466,11 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex items-center gap-4">
         <Link to={`/clientes/${client.id}`} className="rounded-xl border border-stone-200 bg-white p-2.5"><ArrowLeft size={18} /></Link>
-        <h2 className="text-xl font-black sm:text-2xl">{isEditing ? 'Editar orden de trabajo' : 'Nueva orden de trabajo'}</h2>
+        <h2 className="page-title flex-1">{isEditing ? 'Editar orden de trabajo' : 'Nueva orden de trabajo'}</h2>
+        {/* Solo una orden en proceso se puede eliminar: la finalizada ya tiene comprobante y descontó sus bolsas. */}
+        {orderId && !isFinalizedEdit && (
+          <button type="button" className="btn-secondary !text-red-600 hover:!bg-red-50" onClick={handleDelete}><Trash2 size={16} /> <span className="hidden sm:inline">Eliminar orden</span></button>
+        )}
       </div>
 
       <div className="card flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
@@ -534,7 +552,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
           <div className="card p-5">
             <div className="grid gap-3 sm:grid-cols-3">
               <Stat label="Disponible para tostar" value={`${availableLb.toFixed(2)} lb`} />
-              <Stat label="Asignado válido" value={`${roastValidation.allocated.toFixed(2)} lb`} />
+              <Stat label="Asignado" value={`${roastValidation.allocated.toFixed(2)} lb`} />
               <Stat label="Pendiente" value={`${roastValidation.remaining.toFixed(2)} lb`} />
             </div>
             {roastValidation.hasErrors && (
@@ -553,7 +571,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
             return (
               <div className="card p-6" key={r.id}>
                 <div className="mb-5 flex items-center justify-between">
-                  <div><h3 className="font-black">Tueste No. {r.id}</h3><p className="text-sm text-stone-500">Máximo permitido: {MAX_ROAST_LB} lb por servicio.</p></div>
+                  <div><h3 className="font-bold">Tueste No. {r.id}</h3><p className="text-sm text-stone-500">Máximo permitido: {MAX_ROAST_LB} lb por servicio.</p></div>
                   <button className="rounded-xl border border-stone-200 p-2 text-stone-500" onClick={() => removeRoast(r.id)}><Trash2 size={17} /></button>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -609,7 +627,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
             </div>
           )}
           <div className="card p-6">
-            <SectionTitle title={`${step + 1}. Empaque`} subtitle="Resultados del Sistema" />
+            <SectionTitle title={`${step + 1}. Empaque`} subtitle="Cálculo de bolsas según el peso final." />
 
             <div className="max-w-xs">
               <Field label="Gramaje de bolsa (g)">
@@ -619,13 +637,13 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
             </div>
 
             <div className="mb-5 mt-5 grid gap-3 sm:grid-cols-3">
-              <Stat label="Peso convertido" value={`${suggestedPackaging.grams.toFixed(1)} g`} />
-              <Stat label="Sugerencia automática" value={`${suggestedPackaging.fullBags} bolsas`} />
-              <Stat label="Sobrante sugerido" value={`${suggestedPackaging.remainderGrams.toFixed(1)} g`} />
+              <Stat label="Peso final en gramos" value={`${suggestedPackaging.grams.toFixed(1)} g`} />
+              <Stat label="Bolsas estimadas" value={`${suggestedPackaging.fullBags} bolsas`} />
+              <Stat label="Sobrante estimado" value={`${suggestedPackaging.remainderGrams.toFixed(1)} g`} />
             </div>
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <h4 className="font-black text-stone-900">Resultado real del empaque</h4>
+              <h4 className="font-bold text-stone-900">Resultado real del empaque</h4>
               <p className="mt-1 text-sm text-stone-600">Puedes corregir estos valores si el resultado físico fue diferente al cálculo sugerido.</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <Field label={`Bolsas completas (${bagSizeGrams} g)`}><input type="number" min="0" step="1" className="input" placeholder={String(suggestedPackaging.fullBags)} value={actualFullBags} onChange={e => { setPageError(''); setActualFullBags(e.target.value === '' ? '' : Math.max(0, Math.floor(Number(e.target.value) || 0))) }} /></Field>
@@ -669,7 +687,7 @@ function OrderForm({ clientId, id }: { clientId?: string, id?: string }) {
 
       {steps[step] === 'Resumen' && (
         <section className="card p-6">
-          <SectionTitle title={`${step + 1}. Resumen y facturación`} subtitle="" />
+          <SectionTitle title={`${step + 1}. Resumen y cobro`} subtitle="" />
           <div className="grid gap-5 lg:grid-cols-2">
             <OrderSummary order={buildPreviewOrder()} />
             <div>

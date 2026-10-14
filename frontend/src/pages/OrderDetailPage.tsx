@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileDown, Loader2, Pencil } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import PageLoader from '../components/ui/PageLoader'
 import { errorMessage, toast } from '../components/ui/feedback'
@@ -32,7 +32,7 @@ export default function OrderDetailPage() {
     try {
       await generateInvoicePdf(order)
     } catch (err) {
-      toast.error(errorMessage(err, 'No se pudo generar la factura.'))
+      toast.error(errorMessage(err, 'No se pudo generar el comprobante.'))
     } finally {
       setGenerating(false)
     }
@@ -40,24 +40,22 @@ export default function OrderDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-4">
-          <Link to={`/clientes/${order.clientId}`} className="rounded-xl border border-stone-200 bg-white p-2.5"><ArrowLeft size={18} /></Link>
+          <Link to={`/clientes/${order.clientId}`} className="rounded-xl border border-stone-200 bg-white p-2.5" aria-label="Volver al cliente" title="Volver al cliente"><ArrowLeft size={18} /></Link>
           <div>
-            <h2 className="text-2xl font-black">{order.clientName || 'Cliente sin nombre'}</h2>
+            <h2 className="page-title">{order.clientName || 'Cliente sin nombre'}</h2>
             <p className="text-sm text-stone-500">Orden {order.orderNo} · Tel. {order.phone}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            className="btn-primary disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!isFinalized || generating}
-            title={isFinalized ? 'Generar factura en PDF' : 'La orden debe estar finalizada para generar la factura'}
-            onClick={handleGenerateInvoice}
-          >
-            {generating ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
-            Generar factura
-          </button>
+        <div className="flex items-center gap-2">
+          <Link to={`/clientes/ordenes/${order.id}/editar`} className="btn-secondary"><Pencil size={16} /> {isFinalized ? 'Corregir datos' : 'Continuar'}</Link>
+          {isFinalized && (
+            <button className="btn-primary" disabled={generating} title="Descargar comprobante en PDF" onClick={handleGenerateInvoice}>
+              {generating ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+              Comprobante
+            </button>
+          )}
         </div>
       </div>
 

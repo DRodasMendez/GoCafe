@@ -1,24 +1,17 @@
 import { useMemo, useState } from 'react'
-import { CheckCircle2, Circle, FileDown, Loader2, ReceiptText, Search } from 'lucide-react'
+import { CheckCircle2, FileDown, Loader2, ReceiptText, Search, Undo2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { setOrderPagado, useOrders } from '../store/ordersStore'
 import { generateInvoicePdf } from '../utils/invoicePdf'
-import { localISODate, todayISODate } from '../utils/production'
-import DatePickerField from '../components/DatePickerField'
-import { errorMessage, toast } from '../components/ui/feedback'
+import { todayISODate } from '../utils/production'
+import { formatQ } from '../utils/money'
+import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
 import type { Order } from '../types/order'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
-const DAY_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'long', year: 'numeric' })
-const MONTH_NAME_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long' })
-const MONEY_FORMAT = (v: number) => `Q${v.toFixed(2)}`
+const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
-const FIRST_YEAR = 2026
-const MESES = Array.from({ length: 12 }, (_, i) => capitalize(MONTH_NAME_FORMAT.format(new Date(2000, i, 1))))
-
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
+type Vista = 'mes' | 'pendientes'
 
 interface ClientGroup {
   clientId: string
@@ -26,16 +19,20 @@ interface ClientGroup {
   orders: Order[]
 }
 
+/** ¿La fecha ISO cae en el mes "YYYY-MM" (hora local)? */
+function inMonth(iso: string | null | undefined, mes: string): boolean {
+  if (!iso) return false
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === mes
+}
+
 export default function FacturacionPage() {
   const allOrders = useOrders()
+  const [mes, setMes] = useState(() => todayISODate().slice(0, 7))
+  const [vista, setVista] = useState<Vista>('mes')
   const [search, setSearch] = useState('')
-  const [dia, setDia] = useState(todayISODate())
-  const [verTodo, setVerTodo] = useState(false)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
-
-  const now = new Date()
-  const [mesSel, setMesSel] = useState(now.getMonth())
-  const [anioSel, setAnioSel] = useState(now.getFullYear())
+  const [pagandoId, setPagandoId] = useState<string | null>(null)
 
   const finalizadas = useMemo(
     () => allOrders
@@ -44,39 +41,19 @@ export default function FacturacionPage() {
     [allOrders]
   )
 
-  const anios = useMemo(() => {
-    const list: number[] = []
-    for (let y = now.getFullYear(); y >= FIRST_YEAR; y--) list.push(y)
-    return list
-  }, [now.getFullYear()])
-
-  // Por fecha de PAGO (no de finalización): una orden finalizada en septiembre y cobrada en octubre cuenta en octubre.
-  const cobradoMes = useMemo(
-    () => finalizadas
-      .filter(o => {
-        if (!o.pagado || !o.pagadoAt) return false
-        const d = new Date(o.pagadoAt)
-        return d.getFullYear() === anioSel && d.getMonth() === mesSel
-      })
-      .reduce((sum, o) => sum + o.totalPrice, 0),
-    [finalizadas, anioSel, mesSel]
-  )
-  const facturadoAnio = useMemo(
-    () => finalizadas.filter(o => o.finalizedAt && new Date(o.finalizedAt).getFullYear() === anioSel).reduce((sum, o) => sum + o.totalPrice, 0),
-    [finalizadas, anioSel]
-  )
-  const totalCobrado = useMemo(() => finalizadas.filter(o => o.pagado).reduce((sum, o) => sum + o.totalPrice, 0), [finalizadas])
-  const totalFacturado = useMemo(() => finalizadas.reduce((sum, o) => sum + o.totalPrice, 0), [finalizadas])
-  const totalPendiente = totalFacturado - totalCobrado
-  const pendientesCount = finalizadas.filter(o => !o.pagado).length
+  const periodoLabel = MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`))
+  // Por fecha de PAGO: una orden finalizada en septiembre y cobrada en octubre cuenta como cobrada en octubre.
+  const cobradoMes = finalizadas.filter(o => o.pagado && inMonth(o.pagadoAt, mes)).reduce((s, o) => s + o.totalPrice, 0)
+  const finalizadoMes = finalizadas.filter(o => inMonth(o.finalizedAt, mes)).reduce((s, o) => s + o.totalPrice, 0)
+  const pendientes = finalizadas.filter(o => !o.pagado)
+  const totalPendiente = pendientes.reduce((s, o) => s + o.totalPrice, 0)
 
   const filtered = useMemo(() => {
-    let rows = finalizadas
-    if (!verTodo) rows = rows.filter(o => o.finalizedAt && localISODate(new Date(o.finalizedAt)) === dia)
+    let rows = vista === 'pendientes' ? finalizadas.filter(o => !o.pagado) : finalizadas.filter(o => inMonth(o.finalizedAt, mes))
     const term = search.trim().toLowerCase()
     if (term) rows = rows.filter(o => o.clientName.toLowerCase().includes(term) || o.orderNo.toLowerCase().includes(term))
     return rows
-  }, [finalizadas, verTodo, dia, search])
+  }, [finalizadas, vista, mes, search])
 
   const groups = useMemo(() => {
     const map = new Map<string, ClientGroup>()
@@ -92,57 +69,64 @@ export default function FacturacionPage() {
     try {
       await generateInvoicePdf(order)
     } catch (err) {
-      toast.error(errorMessage(err, 'No se pudo generar la factura.'))
+      toast.error(errorMessage(err, 'No se pudo generar el comprobante.'))
     } finally {
       setGeneratingId(null)
     }
   }
 
+  const handlePago = async (order: Order) => {
+    const marcarPagada = !order.pagado
+    const ok = await confirmDialog(marcarPagada
+      ? { title: `¿Registrar el pago de ${order.orderNo}?`, message: `${order.clientName} · ${formatQ(order.totalPrice)}. Contará como cobrado hoy.`, confirmLabel: 'Sí, está pagada' }
+      : { title: `¿Deshacer el pago de ${order.orderNo}?`, message: 'La orden volverá a quedar pendiente de cobro.', confirmLabel: 'Deshacer pago', danger: true })
+    if (!ok) return
+    setPagandoId(order.id)
+    try {
+      await setOrderPagado(order.id, marcarPagada)
+      toast.success(marcarPagada ? `${order.orderNo} registrada como pagada.` : `${order.orderNo} volvió a pendiente.`)
+    } catch (err) {
+      toast.error(errorMessage(err, 'No se pudo actualizar el pago.'))
+    } finally {
+      setPagandoId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-black">Facturación</h2>
-        <p className="mt-1 text-sm text-stone-500">Facturas de todas las órdenes de clientes ya finalizadas, agrupadas por cliente.</p>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="page-title">Cobros</h2>
+          <p className="mt-1 text-sm text-stone-500">Órdenes finalizadas de clientes y su pago.</p>
+        </div>
+        <input type="month" className="input w-48" value={mes} onChange={e => e.target.value && setMes(e.target.value)} aria-label="Mes" />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="card p-5">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm text-stone-500">Cobrado en</p>
-            <select className="select !w-auto !py-1 text-xs" value={mesSel} onChange={e => setMesSel(Number(e.target.value))}>
-              {MESES.map((nombre, i) => <option key={nombre} value={i}>{nombre}</option>)}
-            </select>
-          </div>
-          <p className="mt-2 text-2xl font-black text-emerald-600">{MONEY_FORMAT(cobradoMes)}</p>
+          <p className="text-sm text-stone-500">Cobrado en {periodoLabel}</p>
+          <p className="stat-value mt-2 text-emerald-600">{formatQ(cobradoMes)}</p>
         </div>
         <div className="card p-5">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm text-stone-500">Facturado en el año</p>
-            <select className="select !w-auto !py-1 text-xs" value={anioSel} onChange={e => setAnioSel(Number(e.target.value))}>
-              {anios.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <p className="mt-2 text-2xl font-black text-stone-900">{MONEY_FORMAT(facturadoAnio)}</p>
+          <p className="text-sm text-stone-500">Órdenes finalizadas en {periodoLabel}</p>
+          <p className="stat-value mt-2">{formatQ(finalizadoMes)}</p>
         </div>
-        <div className="card p-5">
+        <button type="button" className={`card p-5 text-left transition hover:border-red-300 ${vista === 'pendientes' ? 'ring-2 ring-red-200' : ''}`} onClick={() => setVista('pendientes')}>
           <p className="text-sm text-stone-500">Pendiente de cobro</p>
-          <p className="mt-2 text-2xl font-black text-red-600">{MONEY_FORMAT(totalPendiente)}</p>
-          {pendientesCount > 0 && <p className="mt-1 text-xs text-stone-500">{pendientesCount} {pendientesCount === 1 ? 'orden' : 'órdenes'} sin cobrar</p>}
-        </div>
+          <p className="stat-value mt-2 text-red-600">{formatQ(totalPendiente)}</p>
+          {pendientes.length > 0 && <p className="mt-1 text-xs text-stone-500">{pendientes.length} {pendientes.length === 1 ? 'orden' : 'órdenes'} sin cobrar (de cualquier mes) · ver</p>}
+        </button>
       </div>
 
       <div className="card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 p-4">
-          <h3 className="font-black">Órdenes facturadas por cliente</h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-              <Search size={15} className="text-stone-400" />
-              <input className="w-44 bg-transparent text-sm outline-none" placeholder="Buscar cliente o folio..." value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            {!verTodo && <div className="w-40"><DatePickerField value={dia} onChange={setDia} /></div>}
-            <button type="button" className="text-xs font-semibold text-amber-700 hover:underline" onClick={() => setVerTodo(v => !v)}>
-              {verTodo ? 'Ver por día' : 'Ver todo el historial'}
-            </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 p-3">
+          <div className="flex">
+            <SegmentButton active={vista === 'mes'} onClick={() => setVista('mes')} label={`Finalizadas en ${periodoLabel}`} />
+            <SegmentButton active={vista === 'pendientes'} onClick={() => setVista('pendientes')} label={`Pendientes de cobro${pendientes.length ? ` (${pendientes.length})` : ''}`} />
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+            <Search size={15} className="text-stone-400" />
+            <input className="w-44 bg-transparent text-sm outline-none" placeholder="Buscar cliente o folio..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
 
@@ -152,9 +136,7 @@ export default function FacturacionPage() {
             <p className="text-sm text-stone-500">
               {search
                 ? `Sin resultados para "${search}".`
-                : verTodo
-                  ? 'Todavía no hay órdenes finalizadas.'
-                  : `Sin facturas el ${DAY_FORMAT.format(new Date(dia + 'T00:00:00'))}.`}
+                : vista === 'pendientes' ? 'No hay órdenes pendientes de cobro.' : `No se finalizaron órdenes en ${periodoLabel}.`}
             </p>
           </div>
         ) : (
@@ -165,21 +147,21 @@ export default function FacturacionPage() {
               return (
                 <div key={group.clientId} className="p-4">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <Link to={`/clientes/${group.clientId}`} className="font-black text-stone-900 hover:underline">{group.clientName}</Link>
+                    <Link to={`/clientes/${group.clientId}`} className="font-semibold text-stone-900 hover:underline">{group.clientName}</Link>
                     <div className="flex items-center gap-4 text-sm">
                       <span className="text-stone-500">{group.orders.length} {group.orders.length === 1 ? 'orden' : 'órdenes'}</span>
-                      <span className="font-semibold text-stone-900">{MONEY_FORMAT(subtotal)}</span>
-                      {subtotalPendiente > 0 && <span className="font-semibold text-red-600">{MONEY_FORMAT(subtotalPendiente)} pendiente</span>}
+                      <span className="font-semibold text-stone-900">{formatQ(subtotal)}</span>
+                      {subtotalPendiente > 0 && <span className="font-semibold text-red-600">{formatQ(subtotalPendiente)} pendiente</span>}
                     </div>
                   </div>
                   <div className="overflow-x-auto rounded-xl bg-stone-50">
-                    <table className="w-full min-w-[560px] text-left text-sm">
+                    <table className="w-full min-w-[600px] text-left text-sm">
                       <thead>
                         <tr className="text-xs font-semibold uppercase tracking-wide text-stone-500">
                           <th className="px-3 pb-2 pt-3">Folio</th>
-                          <th className="px-3 pb-2 pt-3">Fecha</th>
+                          <th className="px-3 pb-2 pt-3">Finalizada</th>
                           <th className="px-3 pb-2 pt-3">Total</th>
-                          <th className="px-3 pb-2 pt-3">Estado</th>
+                          <th className="px-3 pb-2 pt-3">Pago</th>
                           <th className="px-3 pb-2 pt-3"></th>
                         </tr>
                       </thead>
@@ -190,26 +172,32 @@ export default function FacturacionPage() {
                               <Link to={`/clientes/ordenes/${order.id}`} className="hover:underline">{order.orderNo}</Link>
                             </td>
                             <td className="px-3 py-2.5 text-stone-500">{order.finalizedAt ? DATE_FORMAT.format(new Date(order.finalizedAt)) : '—'}</td>
-                            <td className="px-3 py-2.5 font-semibold text-stone-900">{MONEY_FORMAT(order.totalPrice)}</td>
+                            <td className="px-3 py-2.5 font-semibold text-stone-900">{formatQ(order.totalPrice)}</td>
                             <td className="px-3 py-2.5">
-                              <button
-                                type="button"
-                                onClick={() => setOrderPagado(order.id, !order.pagado)
-                                  .then(() => toast.success(order.pagado ? `${order.orderNo} marcada como pendiente.` : `${order.orderNo} marcada como pagada.`))
-                                  .catch(err => toast.error(errorMessage(err, 'No se pudo actualizar el pago.')))}
-                                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${order.pagado ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
-                              >
-                                {order.pagado ? <CheckCircle2 size={13} /> : <Circle size={13} />} {order.pagado ? 'Pagado' : 'Pendiente'}
-                              </button>
+                              {order.pagado ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                    <CheckCircle2 size={13} /> Pagada{order.pagadoAt ? ` · ${DATE_FORMAT.format(new Date(order.pagadoAt))}` : ''}
+                                  </span>
+                                  <button type="button" className="rounded-md p-1 text-stone-400 hover:bg-stone-200 hover:text-stone-700 disabled:opacity-40" title="Deshacer pago" aria-label="Deshacer pago" disabled={pagandoId === order.id} onClick={() => handlePago(order)}>
+                                    <Undo2 size={14} />
+                                  </button>
+                                </span>
+                              ) : (
+                                <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" disabled={pagandoId === order.id} onClick={() => handlePago(order)}>
+                                  {pagandoId === order.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Registrar pago
+                                </button>
+                              )}
                             </td>
                             <td className="px-3 py-2.5 text-right">
                               <button
                                 type="button"
-                                className="btn-secondary !px-3 !py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                                className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs"
                                 disabled={generatingId === order.id}
                                 onClick={() => handleGenerate(order)}
+                                title="Descargar comprobante en PDF"
                               >
-                                {generatingId === order.id ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Factura
+                                {generatingId === order.id ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />} Comprobante
                               </button>
                             </td>
                           </tr>
@@ -224,5 +212,13 @@ export default function FacturacionPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function SegmentButton({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) {
+  return (
+    <button type="button" onClick={onClick} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${active ? 'bg-stone-900 text-white' : 'text-stone-500 hover:bg-stone-100'}`}>
+      {label}
+    </button>
   )
 }

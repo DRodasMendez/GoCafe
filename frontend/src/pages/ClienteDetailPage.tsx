@@ -1,10 +1,11 @@
-import { ArrowLeft, MapPin, Pencil, Phone, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, MapPin, Pencil, Phone, Plus } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useClient, useClientsLoaded } from '../store/clientsStore'
-import { deleteOrder, useClientOrders } from '../store/ordersStore'
+import { useClientOrders } from '../store/ordersStore'
 import StatusProgressBar from '../components/StatusProgressBar'
 import PageLoader from '../components/ui/PageLoader'
-import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
+import { formatQ } from '../utils/money'
+import { formatISODate, isOverdue } from '../utils/dates'
 
 export default function ClienteDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
@@ -17,30 +18,21 @@ export default function ClienteDetailPage() {
   if (!client) {
     return (
       <div className="mx-auto max-w-4xl space-y-4">
-        <Link to="/clientes" className="rounded-xl border border-stone-200 bg-white p-2.5 inline-flex"><ArrowLeft size={18} /></Link>
+        <Link to="/clientes" className="rounded-xl border border-stone-200 bg-white p-2.5 inline-flex" aria-label="Volver a clientes"><ArrowLeft size={18} /></Link>
         <div className="card p-6 text-center text-stone-600">Cliente no encontrado.</div>
       </div>
     )
   }
 
-  const handleDeleteOrder = async (orderId: string, orderNo: string) => {
-    const ok = await confirmDialog({ title: `¿Eliminar la orden ${orderNo}?`, message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar orden', danger: true })
-    if (!ok) return
-    try {
-      await deleteOrder(orderId)
-      toast.success(`Orden ${orderNo} eliminada.`)
-    } catch (err) {
-      toast.error(errorMessage(err, 'No se pudo eliminar la orden.'))
-    }
-  }
+  const enProceso = orders.filter(o => o.status !== 'Finalizado').length
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-4">
-          <Link to="/clientes" className="rounded-xl border border-stone-200 bg-white p-2.5"><ArrowLeft size={18} /></Link>
+          <Link to="/clientes" className="rounded-xl border border-stone-200 bg-white p-2.5" aria-label="Volver a clientes" title="Volver a clientes"><ArrowLeft size={18} /></Link>
           <div>
-            <h2 className="text-2xl font-black">{client.name || 'Sin nombre'}</h2>
+            <h2 className="page-title">{client.name || 'Sin nombre'}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-500">
               <span className="inline-flex items-center gap-1"><Phone size={14} /> {client.phone || '—'}</span>
               <span className="inline-flex items-center gap-1"><MapPin size={14} /> {client.city || '—'}</span>
@@ -48,14 +40,17 @@ export default function ClienteDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link to={`/clientes/${client.id}/ordenes/nueva`} className="btn-primary"><Plus size={18} /> Agregar nueva orden</Link>
+          <Link to={`/clientes/${client.id}/editar`} className="btn-secondary"><Pencil size={16} /> Editar datos</Link>
+          <Link to={`/clientes/${client.id}/ordenes/nueva`} className="btn-primary"><Plus size={18} /> Nueva orden</Link>
         </div>
       </div>
 
       <div className="card overflow-hidden">
         <div className="border-b border-stone-200 p-4">
-          <h3 className="font-black">Órdenes registradas</h3>
-          <p className="text-sm text-stone-500">{orders.length} {orders.length === 1 ? 'orden' : 'órdenes'} en total.</p>
+          <h3 className="font-bold">Órdenes</h3>
+          <p className="text-sm text-stone-500">
+            {orders.length} {orders.length === 1 ? 'orden' : 'órdenes'}{enProceso > 0 && ` · ${enProceso} en proceso`}
+          </p>
         </div>
 
         {orders.length === 0 ? (
@@ -66,27 +61,33 @@ export default function ClienteDetailPage() {
           <div className="divide-y divide-stone-100">
             {orders.map(order => {
               const isFinalized = order.status === 'Finalizado'
+              const atrasada = !isFinalized && isOverdue(order.estimatedDate)
+              // Toda la fila lleva a la orden: la finalizada se consulta, la que está en proceso se continúa.
+              // Editar o eliminar se hace desde adentro, para que no se toque por accidente desde la lista.
+              const href = isFinalized ? `/clientes/ordenes/${order.id}` : `/clientes/ordenes/${order.id}/editar`
               return (
-                <div key={order.id} className="flex flex-wrap items-center gap-4 p-4">
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {isFinalized ? (
-                      <Link to={`/clientes/ordenes/${order.id}/editar`} className="icon-btn" title="Editar orden"><Pencil size={16} /></Link>
-                    ) : (
-                      // Una orden finalizada no se puede borrar: tiene factura y ya descontó sus bolsas del inventario.
-                      <button className="icon-btn-danger" title="Eliminar orden" onClick={() => handleDeleteOrder(order.id, order.orderNo)}><Trash2 size={16} /></button>
-                    )}
-                  </div>
+                <Link key={order.id} to={href} className="flex flex-wrap items-center gap-4 p-4 transition hover:bg-stone-50">
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-stone-900">{order.orderNo}</p>
-                    <p className="text-xs text-stone-500">Recibido {order.receivedDate || '—'}</p>
+                    <p className="text-xs text-stone-500">
+                      Recibida {formatISODate(order.receivedDate)}
+                      {!isFinalized && order.estimatedDate && (
+                        <> · <span className={atrasada ? 'font-semibold text-red-600' : ''}>{atrasada ? 'Atrasada, era para el' : 'Entrega'} {formatISODate(order.estimatedDate)}</span></>
+                      )}
+                    </p>
                   </div>
-                  <div className="w-44 shrink-0"><StatusProgressBar status={order.status} compact /></div>
                   {isFinalized ? (
-                    <Link to={`/clientes/ordenes/${order.id}`} className="btn-secondary shrink-0">Ver detalle</Link>
+                    <div className="text-right text-sm">
+                      <p className="font-semibold text-stone-900">{formatQ(order.totalPrice)}</p>
+                      <p className={`text-xs font-semibold ${order.pagado ? 'text-emerald-600' : 'text-red-600'}`}>{order.pagado ? 'Pagada' : 'Pendiente de cobro'}</p>
+                    </div>
                   ) : (
-                    <Link to={`/clientes/ordenes/${order.id}/editar`} className="btn-primary shrink-0">Continuar</Link>
+                    <div className="w-44 shrink-0"><StatusProgressBar status={order.status} compact /></div>
                   )}
-                </div>
+                  <span className={`shrink-0 text-sm font-semibold ${isFinalized ? 'text-stone-500' : 'text-amber-700'}`}>
+                    <span className="inline-flex items-center gap-0.5">{isFinalized ? 'Ver' : 'Continuar'} <ChevronRight size={16} /></span>
+                  </span>
+                </Link>
               )
             })}
           </div>

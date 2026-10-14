@@ -1,9 +1,11 @@
 import { COFFEE_TYPE_LABELS, PACKAGE_TYPES, coffeeTypeHasCleaningStep, type Order, type Roast } from '../types/order'
+import { formatQ } from '../utils/money'
+import { capitalize } from '../utils/text'
 
 function Section({ title, children }: { title: string, children: React.ReactNode }) {
   return (
     <div className="rounded-2xl bg-stone-50 p-5 text-sm leading-7">
-      <h4 className="mb-2 font-black text-stone-900">{title}</h4>
+      <h4 className="mb-2 font-bold text-stone-900">{title}</h4>
       {children}
     </div>
   )
@@ -65,8 +67,8 @@ export default function OrderSummary({ order }: { order: Order }) {
       <Section title="Postproceso">
         <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
           <Row label="Peso final" value={`${order.finalWeight} lb`} />
-          <Row label="Tipo de tueste" value={order.roastType} />
-          <Row label="Tipo de molienda" value={order.grindType} />
+          <Row label="Tipo de tueste" value={capitalize(order.roastType)} />
+          <Row label="Tipo de molienda" value={capitalize(order.grindType)} />
         </div>
       </Section>
 
@@ -76,15 +78,15 @@ export default function OrderSummary({ order }: { order: Order }) {
         <div className="mt-2 border-t border-stone-200 pt-2">
           <b>Distribución:</b>
           {PACKAGE_TYPES.filter(type => order.packageAllocation[type] > 0).map(type => (
-            <p key={type}>• {order.packageAllocation[type]} completas — {type}</p>
+            <p key={type}>• {order.packageAllocation[type]} completas — {capitalize(type)}</p>
           ))}
-          {hasIncompleteBag && <p>• 1 incompleta ({order.actualRemainderGrams.toFixed(1)} g) — {order.incompletePackageType}</p>}
+          {hasIncompleteBag && <p>• 1 incompleta ({order.actualRemainderGrams.toFixed(1)} g) — {capitalize(order.incompletePackageType)}</p>}
         </div>
       </Section>
 
-      <Section title="Facturación">
-        <Row label="Total a cobrar" value={order.totalPrice ? `Q ${order.totalPrice}` : '—'} />
-        <Row label="Estado" value={order.status} />
+      <Section title="Cobro">
+        <Row label="Total a cobrar" value={order.totalPrice ? formatQ(order.totalPrice) : '—'} />
+        <Row label="Estado" value={order.status === 'Finalizado' ? (order.pagado ? 'Finalizada · Pagada' : 'Finalizada · Pendiente de cobro') : order.status} />
       </Section>
     </div>
   )

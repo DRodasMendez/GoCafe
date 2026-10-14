@@ -1,14 +1,11 @@
 import { useMemo, useState } from 'react'
-import { CalendarDays, Pencil, Plus, Search, Trash2, UserRound, Users } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
-import { deleteClient, useClientsWithOrders } from '../store/clientsStore'
-import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
-
-const REGISTERED_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
+import { ChevronRight, Plus, Search, UserRound, Users } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useClientsWithOrders } from '../store/clientsStore'
+import { capitalize } from '../utils/text'
 
 export default function ClientesPage() {
   const clients = useClientsWithOrders()
-  const navigate = useNavigate()
   const [search, setSearch] = useState('')
 
   const filteredClients = useMemo(() => {
@@ -20,43 +17,19 @@ export default function ClientesPage() {
     )
   }, [clients, search])
 
-  const handleDelete = async (e: React.MouseEvent, clientId: string, name: string, orderCount: number) => {
-    e.stopPropagation()
-    const ok = await confirmDialog({
-      title: `¿Eliminar a ${name || 'este cliente'}?`,
-      message: orderCount > 0
-        ? `También se eliminarán sus ${orderCount} orden${orderCount === 1 ? '' : 'es'} en proceso. Esta acción no se puede deshacer.`
-        : 'Esta acción no se puede deshacer.',
-      confirmLabel: 'Eliminar cliente',
-      danger: true,
-    })
-    if (!ok) return
-    try {
-      await deleteClient(clientId)
-      toast.success(`${name || 'Cliente'} eliminado.`)
-    } catch (err) {
-      toast.error(errorMessage(err, 'No se pudo eliminar el cliente.'))
-    }
-  }
-
-  const handleEdit = (e: React.MouseEvent, clientId: string) => {
-    e.stopPropagation()
-    navigate(`/clientes/${clientId}/editar`)
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div><h2 className="text-2xl font-black">Clientes</h2><p className="mt-1 text-sm text-stone-500">Registro de clientes y órdenes de trabajo.</p></div>
-        <Link className="btn-primary" to="/clientes/nuevo"><Plus size={18}/> Agregar nuevo cliente</Link>
+        <div><h2 className="page-title">Clientes</h2><p className="mt-1 text-sm text-stone-500">{clients.length} {clients.length === 1 ? 'cliente registrado' : 'clientes registrados'}</p></div>
+        <Link className="btn-primary" to="/clientes/nuevo"><Plus size={18} /> Nuevo cliente</Link>
       </div>
       <div className="card overflow-hidden">
         <div className="border-b border-stone-200 p-4">
           <div className="flex max-w-sm items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-            <Search size={17} className="text-stone-400"/>
+            <Search size={17} className="text-stone-400" />
             <input
               className="w-full bg-transparent text-sm outline-none"
-              placeholder="Buscar cliente..."
+              placeholder="Buscar por nombre o teléfono..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -65,7 +38,7 @@ export default function ClientesPage() {
 
         {clients.length === 0 && (
           <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-            <div className="mb-3 rounded-2xl bg-stone-100 p-4 text-stone-500"><Users size={28}/></div>
+            <div className="mb-3 rounded-2xl bg-stone-100 p-4 text-stone-500"><Users size={28} /></div>
             <h3 className="font-bold">Aún no hay clientes registrados</h3>
             <p className="mt-1 max-w-md text-sm text-stone-500">Agrega tu primer cliente para empezar.</p>
           </div>
@@ -80,43 +53,22 @@ export default function ClientesPage() {
         {filteredClients.length > 0 && (
           <div className="divide-y divide-stone-100">
             {filteredClients.map(client => {
-              // Un cliente con órdenes finalizadas no se puede borrar (se perdería su historial de facturación).
-              const finalizadas = client.orders.filter(o => o.status === 'Finalizado').length
+              const enProceso = client.orders.filter(o => o.status !== 'Finalizado').length
+              const porCobrar = client.orders.filter(o => o.status === 'Finalizado' && !o.pagado).length
               return (
-              <div
-                key={client.id}
-                role="button"
-                tabIndex={0}
-                className="flex w-full items-center gap-4 p-4 text-left hover:bg-stone-50"
-                onClick={() => navigate(`/clientes/${client.id}`)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate(`/clientes/${client.id}`) }}
-              >
-                <div className="rounded-xl bg-stone-100 p-2.5 text-stone-500"><UserRound size={18} /></div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-stone-900">{client.name || 'Sin nombre'}</p>
-                  <p className="text-sm text-stone-500">{client.phone || '—'} · {client.orders.length} {client.orders.length === 1 ? 'orden' : 'órdenes'}</p>
-                </div>
-                <span className="hidden shrink-0 items-center gap-1.5 text-xs text-stone-400 sm:inline-flex">
-                  <CalendarDays size={13} /> Registrado {REGISTERED_FORMAT.format(new Date(client.createdAt))}
-                </span>
-                <button
-                  type="button"
-                  className="icon-btn shrink-0"
-                  title="Editar cliente"
-                  onClick={e => handleEdit(e, client.id)}
-                >
-                  <Pencil size={16} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn-danger shrink-0 disabled:cursor-not-allowed disabled:opacity-30"
-                  disabled={finalizadas > 0}
-                  title={finalizadas > 0 ? `No se puede eliminar: tiene ${finalizadas} orden${finalizadas === 1 ? '' : 'es'} finalizada${finalizadas === 1 ? '' : 's'} con factura` : 'Eliminar cliente'}
-                  onClick={e => handleDelete(e, client.id, client.name, client.orders.length)}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
+                <Link key={client.id} to={`/clientes/${client.id}`} className="flex w-full items-center gap-4 p-4 transition hover:bg-stone-50">
+                  <div className="rounded-xl bg-stone-100 p-2.5 text-stone-500"><UserRound size={18} /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-stone-900">{client.name || 'Sin nombre'}</p>
+                    <p className="text-sm text-stone-500">{client.phone || '—'}{client.city && ` · ${capitalize(client.city)}`}</p>
+                  </div>
+                  <div className="hidden shrink-0 flex-wrap justify-end gap-1.5 sm:flex">
+                    {enProceso > 0 && <span className="rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{enProceso} en proceso</span>}
+                    {porCobrar > 0 && <span className="rounded-lg bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{porCobrar} por cobrar</span>}
+                    {enProceso === 0 && porCobrar === 0 && <span className="text-xs text-stone-400">{client.orders.length} {client.orders.length === 1 ? 'orden' : 'órdenes'}</span>}
+                  </div>
+                  <ChevronRight size={18} className="shrink-0 text-stone-300" />
+                </Link>
               )
             })}
           </div>
