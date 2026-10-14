@@ -271,6 +271,8 @@ model InventarioMovimiento {
   saldoResultante Decimal         @map("saldo_resultante") @db.Decimal(10, 2)
   /** Cuánto se pagó por esta entrada (compra), en quetzales. Null = sin costo registrado o no es una compra. */
   costoTotal      Decimal?        @map("costo_total") @db.Decimal(12, 2)
+  /** Cuándo se corrigió el costo por última vez (null = nunca). Solo el costo es corregible; la cantidad no. */
+  costoCorregidoAt DateTime?      @map("costo_corregido_at")
 
   @@index([material, fecha])
   @@map("inventario_movimientos")
@@ -319,6 +321,8 @@ model InventarioEmpaqueMovimiento {
   saldoResultante Int             @map("saldo_resultante")
   /** Cuánto se pagó por esta entrada (compra de bolsas), en quetzales. Null = sin costo registrado o no es una compra. */
   costoTotal      Decimal?        @map("costo_total") @db.Decimal(12, 2)
+  /** Cuándo se corrigió el costo por última vez (null = nunca). */
+  costoCorregidoAt DateTime?      @map("costo_corregido_at")
 
   @@index([tipoEmpaque, fecha])
   @@map("inventario_empaque_movimientos")

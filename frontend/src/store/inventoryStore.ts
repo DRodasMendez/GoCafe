@@ -70,6 +70,9 @@ export interface InventoryMovement {
   saldoResultante: number
   /** Lo que se pagó por la entrada (Q). Null si no se registró costo. */
   costoTotal: number | null
+  /** Entrada registrada a mano: la única a la que se le puede poner o corregir el costo. */
+  esCompra: boolean
+  costoCorregidoAt: string | null
 }
 
 function emptyState(): InventoryState {
@@ -96,6 +99,8 @@ interface MovimientoDto {
   referenciaId: string | null
   saldoResultante: string
   costoTotal: string | null
+  referenciaTipo: string | null
+  costoCorregidoAt: string | null
 }
 
 function buildState(rows: StockDto[]): InventoryState {
@@ -127,6 +132,8 @@ function fromMovementDto(m: MovimientoDto): InventoryMovement {
     referenciaId: m.referenciaId ?? undefined,
     saldoResultante: Number(m.saldoResultante),
     costoTotal: m.costoTotal == null ? null : Number(m.costoTotal),
+    esCompra: m.tipo === 'entrada' && m.referenciaTipo === 'manual',
+    costoCorregidoAt: m.costoCorregidoAt,
   }
 }
 
@@ -153,6 +160,9 @@ export interface EmpaqueMovement {
   saldoResultante: number
   /** Lo que se pagó por la entrada (Q). Null si no se registró costo. */
   costoTotal: number | null
+  /** Entrada registrada a mano: la única a la que se le puede poner o corregir el costo. */
+  esCompra: boolean
+  costoCorregidoAt: string | null
 }
 
 interface EmpaqueMovimientoDto {
@@ -165,6 +175,8 @@ interface EmpaqueMovimientoDto {
   referenciaId: string | null
   saldoResultante: number
   costoTotal: string | null
+  referenciaTipo: string | null
+  costoCorregidoAt: string | null
 }
 
 function fromEmpaqueMovementDto(m: EmpaqueMovimientoDto): EmpaqueMovement {
@@ -178,6 +190,8 @@ function fromEmpaqueMovementDto(m: EmpaqueMovimientoDto): EmpaqueMovement {
     referenciaId: m.referenciaId ?? undefined,
     saldoResultante: m.saldoResultante,
     costoTotal: m.costoTotal == null ? null : Number(m.costoTotal),
+    esCompra: m.tipo === 'entrada' && m.referenciaTipo === 'manual',
+    costoCorregidoAt: m.costoCorregidoAt,
   }
 }
 
@@ -294,6 +308,12 @@ export function getRawMaterialStock(material: RawMaterialType): number {
 // ---------------------------------------------------------------------------
 // Materia prima
 // ---------------------------------------------------------------------------
+
+/** Corrige (o quita, con null) el costo de una compra de materia prima. No cambia el stock. */
+export async function corregirCostoMateriaPrima(movimientoId: string, costoTotal: number | null): Promise<void> {
+  await apiFetch<void>(`/api/inventario/movimientos/${encodeURIComponent(movimientoId)}/costo`, { method: 'PATCH', body: { costoTotal } })
+  await refresh()
+}
 
 /** costoTotal: lo que costó toda la entrada (ej. el saco completo), en quetzales. Opcional. */
 export async function registrarEntradaMateriaPrima(material: RawMaterialType, cantidadLb: number, motivo: string, costoTotal?: number): Promise<void> {
@@ -431,6 +451,12 @@ export async function registrarEntradaEmpaque(tipo: string, cantidad: number, mo
 }
 
 /** Corrección manual (ej. se capturó de más). Queda como un único movimiento de salida — nunca se reescribe la entrada original. */
+/** Corrige (o quita, con null) el costo de una compra de bolsas. No cambia el stock. */
+export async function corregirCostoEmpaque(movimientoId: string, costoTotal: number | null): Promise<void> {
+  await apiFetch<void>(`/api/inventario/empaque/movimientos/${encodeURIComponent(movimientoId)}/costo`, { method: 'PATCH', body: { costoTotal } })
+  await refresh()
+}
+
 export async function registrarSalidaEmpaque(tipo: string, cantidad: number, motivo: string): Promise<void> {
   await apiFetch<void>(`/api/inventario/empaque/${encodeURIComponent(tipo)}/salida`, { method: 'POST', body: { cantidad, motivo } })
   await refresh()

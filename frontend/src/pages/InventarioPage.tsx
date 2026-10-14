@@ -8,6 +8,8 @@ import {
   RAW_MATERIALS,
   STOCK_LABELS,
   bagsEquivalent,
+  corregirCostoEmpaque,
+  corregirCostoMateriaPrima,
   descontarGourmetTerminado,
   descontarGranoCafeteria,
   empacarSobranteGourmet,
@@ -27,9 +29,11 @@ import {
   useGourmetEmpacado,
   useInventory,
   useMovements,
+  type EmpaqueMovement,
   type EmpaqueStockItem,
   type GourmetBagType,
   type GourmetEmpacado,
+  type InventoryMovement,
   type StockMaterial,
 } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
@@ -380,6 +384,7 @@ function EmpaqueCard({ item, onEntrada, onEditar }: { item: EmpaqueStockItem, on
 function EmpaqueHistory() {
   const allMovements = useEmpaqueMovements()
   const empaqueStock = useEmpaqueStock()
+  const [corrigiendo, setCorrigiendo] = useState<EmpaqueMovement | null>(null)
   const [tipoFiltro, setTipoFiltro] = useState<string>('all')
   const [dia, setDia] = useState(todayISODate())
   const [verTodo, setVerTodo] = useState(false)
@@ -441,7 +446,7 @@ function EmpaqueHistory() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5">{m.cantidad} unidades</td>
-                  <td className="whitespace-nowrap px-4 py-2.5"><CostoCell costo={m.costoTotal} cantidad={m.cantidad} unidad="bolsa" esEntrada={m.tipo === 'entrada'} /></td>
+                  <td className="whitespace-nowrap px-4 py-2.5"><CostoCell mov={m} unidad="bolsa" onCorregir={() => setCorrigiendo(m)} /></td>
                   <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante}</td>
                 </tr>
@@ -449,6 +454,9 @@ function EmpaqueHistory() {
             </tbody>
           </table>
         </div>
+      )}
+      {corrigiendo && (
+        <CorregirCostoModal mov={corrigiendo} titulo={labelFor(corrigiendo.tipoEmpaque)} unidad="bolsa" onSave={costo => corregirCostoEmpaque(corrigiendo.id, costo)} onClose={() => setCorrigiendo(null)} />
       )}
     </div>
   )
@@ -568,21 +576,88 @@ function FinishedStockCard({ label, lb, bags, onSalida, icon: Icon = PackageChec
   )
 }
 
-/** Costo de una entrada y su precio unitario; las salidas no son compras, así que no llevan costo. */
-function CostoCell({ costo, cantidad, unidad, esEntrada }: { costo: number | null, cantidad: number, unidad: 'lb' | 'bolsa', esEntrada: boolean }) {
-  if (!esEntrada) return <span className="text-stone-300">—</span>
-  if (costo === null) return <span className="text-xs text-stone-400">Sin costo</span>
+interface MovimientoConCosto { id: string, tipo: 'entrada' | 'salida', cantidad: number, costoTotal: number | null, esCompra: boolean, costoCorregidoAt: string | null }
+
+/**
+ * Costo de una compra y su precio unitario, con un lápiz para corregirlo. Las salidas y lo que
+ * entra al finalizar un lote no son compras, así que no llevan costo.
+ */
+function CostoCell({ mov, unidad, onCorregir }: { mov: MovimientoConCosto, unidad: 'lb' | 'bolsa', onCorregir: () => void }) {
+  if (!mov.esCompra) return <span className="text-stone-300">—</span>
   return (
-    <span>
-      <b className="text-stone-900">{formatQ(costo)}</b>
-      {cantidad > 0 && <span className="block text-xs text-stone-500">{formatQ(costo / cantidad)} / {unidad}</span>}
+    <span className="flex items-start gap-1.5">
+      {mov.costoTotal === null ? (
+        <span className="text-xs text-stone-400">Sin costo</span>
+      ) : (
+        <span>
+          <b className="text-stone-900">{formatQ(mov.costoTotal)}</b>
+          {mov.cantidad > 0 && <span className="block text-xs text-stone-500">{formatQ(mov.costoTotal / mov.cantidad)} / {unidad}</span>}
+          {mov.costoCorregidoAt && (
+            <span className="block text-[11px] text-amber-700" title={`Corregido el ${DATE_TIME_FORMAT.format(new Date(mov.costoCorregidoAt))}`}>Corregido</span>
+          )}
+        </span>
+      )}
+      <button type="button" className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-amber-700" onClick={onCorregir} title={mov.costoTotal === null ? 'Agregar costo' : 'Corregir costo'} aria-label={mov.costoTotal === null ? 'Agregar costo' : 'Corregir costo'}>
+        <Pencil size={13} />
+      </button>
     </span>
+  )
+}
+
+/** Corrige (o quita) el costo de una compra ya registrada. No cambia las cantidades del inventario. */
+function CorregirCostoModal({ mov, titulo, unidad, onSave, onClose }: { mov: MovimientoConCosto, titulo: string, unidad: 'lb' | 'bolsa', onSave: (costo: number | null) => Promise<void>, onClose: () => void }) {
+  const [costo, setCosto] = useState(mov.costoTotal === null ? '' : String(mov.costoTotal))
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const guardar = async (valor: number | null) => {
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      await onSave(valor)
+      toast.success(valor === null ? 'Se quitó el costo de la entrada.' : `Costo actualizado a ${formatQ(valor)}.`)
+      onClose()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo corregir el costo.'))
+      setSubmitting(false)
+    }
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const valor = parseCosto(costo)
+    if (valor === null) { setError('El costo debe ser un número mayor o igual a 0.'); return }
+    if (valor === undefined) { setError('Ingresa el costo, o usa "Quitar costo" si no fue una compra.'); return }
+    void guardar(valor)
+  }
+
+  const cantidadTexto = unidad === 'lb' ? `${mov.cantidad.toFixed(2)} lb` : `${mov.cantidad} bolsas`
+  return (
+    <Modal title={`Corregir costo — ${titulo}`} onClose={onClose}>
+      {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
+      <p className="text-sm text-stone-500">
+        Entrada de <b className="text-stone-700">{cantidadTexto}</b>. Costo actual: <b className="text-stone-700">{mov.costoTotal === null ? 'sin costo' : formatQ(mov.costoTotal)}</b>.
+        Solo cambia el costo; el inventario no se mueve.
+      </p>
+      <form onSubmit={handleSubmit}>
+        <CostoTotalField value={costo} onChange={v => { setError(''); setCosto(v) }} cantidad={mov.cantidad} unidad={unidad} />
+        <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
+          {submitting && <Loader2 size={16} className="animate-spin" />} Guardar costo
+        </button>
+        {mov.costoTotal !== null && (
+          <button type="button" className="btn-secondary mt-2 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting} onClick={() => void guardar(null)}>
+            Quitar costo (no fue una compra)
+          </button>
+        )}
+      </form>
+    </Modal>
   )
 }
 
 /** showCosto: solo la materia prima se compra; el grano y el producto terminado salen de la producción. */
 function MonthlyHistory({ title, materials, showCosto = false }: { title: string, materials: StockMaterial[], showCosto?: boolean }) {
   const allMovements = useMovements()
+  const [corrigiendo, setCorrigiendo] = useState<InventoryMovement | null>(null)
   const [materialFiltro, setMaterialFiltro] = useState<StockMaterial | 'all'>('all')
   const [dia, setDia] = useState(todayISODate())
   const [verTodo, setVerTodo] = useState(false)
@@ -647,7 +722,7 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
                     </span>
                   </td>
                   <td className="px-4 py-2.5">{m.cantidad.toFixed(2)} lb</td>
-                  {showCosto && <td className="whitespace-nowrap px-4 py-2.5"><CostoCell costo={m.costoTotal} cantidad={m.cantidad} unidad="lb" esEntrada={m.tipo === 'entrada'} /></td>}
+                  {showCosto && <td className="whitespace-nowrap px-4 py-2.5"><CostoCell mov={m} unidad="lb" onCorregir={() => setCorrigiendo(m)} /></td>}
                   <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante.toFixed(2)}</td>
                 </tr>
@@ -655,6 +730,9 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
             </tbody>
           </table>
         </div>
+      )}
+      {corrigiendo && (
+        <CorregirCostoModal mov={corrigiendo} titulo={STOCK_LABELS[corrigiendo.material]} unidad="lb" onSave={costo => corregirCostoMateriaPrima(corrigiendo.id, costo)} onClose={() => setCorrigiendo(null)} />
       )}
     </div>
   )

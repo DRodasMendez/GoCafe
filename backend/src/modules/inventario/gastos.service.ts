@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma'
+import { AppError, NotFoundError } from '../../errors'
 import { STOCK_LABELS, type StockMaterial } from './inventario.constants'
 import { EMPAQUE_LABELS, type EmpaqueType } from './empaque.constants'
 
@@ -85,5 +86,36 @@ export async function getGastos(desde: Date, hasta: Date) {
     totalEmpaque: sum('empaque'),
     total: sum(),
     entradasSinCosto: items.reduce((s, i) => s + i.entradasSinCosto, 0),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Corrección del costo de una compra. El Kardex sigue siendo de solo-inserción para las
+// cantidades (eso se corrige con una salida); el costo es solo informativo y no mueve stock,
+// así que se puede corregir en el mismo movimiento, dejando la fecha de la corrección.
+// ---------------------------------------------------------------------------
+
+const SOLO_COMPRAS = 'Solo se puede corregir el costo de una entrada registrada a mano (compra).'
+
+/** costoTotal null = quitar el costo (la entrada no fue una compra). */
+export async function corregirCostoMateriaPrima(id: string, costoTotal: number | null) {
+  const { count } = await prisma.inventarioMovimiento.updateMany({
+    where: { id, tipo: 'entrada', referenciaTipo: 'manual' },
+    data: { costoTotal, costoCorregidoAt: new Date() },
+  })
+  if (count === 0) {
+    const existe = await prisma.inventarioMovimiento.findUnique({ where: { id }, select: { id: true } })
+    throw existe ? new AppError(SOLO_COMPRAS) : new NotFoundError('Movimiento no encontrado.')
+  }
+}
+
+export async function corregirCostoEmpaque(id: string, costoTotal: number | null) {
+  const { count } = await prisma.inventarioEmpaqueMovimiento.updateMany({
+    where: { id, tipo: 'entrada', referenciaTipo: 'manual' },
+    data: { costoTotal, costoCorregidoAt: new Date() },
+  })
+  if (count === 0) {
+    const existe = await prisma.inventarioEmpaqueMovimiento.findUnique({ where: { id }, select: { id: true } })
+    throw existe ? new AppError(SOLO_COMPRAS) : new NotFoundError('Movimiento no encontrado.')
   }
 }

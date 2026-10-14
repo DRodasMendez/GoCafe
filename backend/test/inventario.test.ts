@@ -282,3 +282,45 @@ describe('control de gastos (costo de las compras)', () => {
     expect(res.status).toBe(400)
   })
 })
+
+describe('corrección del costo de una compra', () => {
+  const mes = { desde: '2000-01-01T00:00:00.000Z', hasta: '2100-01-01T00:00:00.000Z' }
+
+  it('corrige el costo de una entrada de materia prima, marca la fecha y no toca el stock', async () => {
+    await request(app).post('/api/inventario/materia-prima/pergamino/entrada').set(authHeader(token)).send({ cantidadLb: 100, costoTotal: 15000 })
+    const [mov] = (await request(app).get('/api/inventario/movimientos').set(authHeader(token)).query({ material: 'pergamino' })).body
+
+    const res = await request(app).patch(`/api/inventario/movimientos/${mov.id}/costo`).set(authHeader(token)).send({ costoTotal: 1500 })
+    expect(res.status).toBe(204)
+
+    const [corregido] = (await request(app).get('/api/inventario/movimientos').set(authHeader(token)).query({ material: 'pergamino' })).body
+    expect(Number(corregido.costoTotal)).toBe(1500)
+    expect(corregido.costoCorregidoAt).not.toBeNull()
+    const stock = await request(app).get('/api/inventario/stock').set(authHeader(token))
+    expect(stock.body.find((s: any) => s.material === 'pergamino').cantidadLb).toBe(100)
+    const gastos = await request(app).get('/api/inventario/gastos').set(authHeader(token)).query(mes)
+    expect(gastos.body.total).toBe(1500)
+  })
+
+  it('permite quitar el costo (null) y corregir el de bolsas', async () => {
+    await request(app).post('/api/inventario/empaque/comercial/entrada').set(authHeader(token)).send({ cantidad: 100, costoTotal: 300 })
+    const [mov] = (await request(app).get('/api/inventario/empaque/movimientos').set(authHeader(token))).body
+
+    expect((await request(app).patch(`/api/inventario/empaque/movimientos/${mov.id}/costo`).set(authHeader(token)).send({ costoTotal: null })).status).toBe(204)
+    const gastos = await request(app).get('/api/inventario/gastos').set(authHeader(token)).query(mes)
+    expect(gastos.body.total).toBe(0)
+    expect(gastos.body.entradasSinCosto).toBe(1)
+  })
+
+  it('no permite poner costo a una salida, ni costos negativos, y responde 404 si no existe', async () => {
+    await request(app).post('/api/inventario/materia-prima/oro/entrada').set(authHeader(token)).send({ cantidadLb: 50 })
+    await request(app).post('/api/inventario/materia-prima/oro/salida').set(authHeader(token)).send({ cantidadLb: 5 })
+    const movs = (await request(app).get('/api/inventario/movimientos').set(authHeader(token)).query({ material: 'oro' })).body
+    const salida = movs.find((m: any) => m.tipo === 'salida')
+    const entrada = movs.find((m: any) => m.tipo === 'entrada')
+
+    expect((await request(app).patch(`/api/inventario/movimientos/${salida.id}/costo`).set(authHeader(token)).send({ costoTotal: 10 })).status).toBe(400)
+    expect((await request(app).patch(`/api/inventario/movimientos/${entrada.id}/costo`).set(authHeader(token)).send({ costoTotal: -1 })).status).toBe(400)
+    expect((await request(app).patch('/api/inventario/movimientos/00000000-0000-0000-0000-000000000000/costo').set(authHeader(token)).send({ costoTotal: 10 })).status).toBe(404)
+  })
+})

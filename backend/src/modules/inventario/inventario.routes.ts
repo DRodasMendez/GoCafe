@@ -88,6 +88,18 @@ inventarioRouter.post(
   })
 )
 
+/** null = quitar el costo (la entrada no fue una compra). */
+const corregirCostoSchema = z.object({ costoTotal: z.number().nonnegative().max(9_999_999_999).nullable() })
+
+inventarioRouter.patch(
+  '/movimientos/:id/costo',
+  asyncHandler(async (req, res) => {
+    const { costoTotal } = corregirCostoSchema.parse(req.body)
+    await gastosService.corregirCostoMateriaPrima(req.params.id, costoTotal)
+    res.status(204).end()
+  })
+)
+
 inventarioRouter.post(
   '/materia-prima/:material/salida',
   asyncHandler(async (req, res) => {
@@ -207,6 +219,15 @@ inventarioRouter.get(
         hasta: typeof hasta === 'string' ? new Date(hasta) : undefined,
       })
     )
+  })
+)
+
+inventarioRouter.patch(
+  '/empaque/movimientos/:id/costo',
+  asyncHandler(async (req, res) => {
+    const { costoTotal } = corregirCostoSchema.parse(req.body)
+    await gastosService.corregirCostoEmpaque(req.params.id, costoTotal)
+    res.status(204).end()
   })
 )
 
