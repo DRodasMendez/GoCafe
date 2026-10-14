@@ -4,6 +4,7 @@ import { asyncHandler } from '../../middleware/asyncHandler'
 import { AppError } from '../../errors'
 import * as inventarioService from './inventario.service'
 import * as empaqueService from './empaque.service'
+import * as gastosService from './gastos.service'
 import { ALL_MATERIALS, RAW_MATERIALS, type RawMaterialType, type StockMaterial } from './inventario.constants'
 import { EMPAQUE_TYPES, type EmpaqueType } from './empaque.constants'
 
@@ -24,6 +25,23 @@ function parseEmpaqueType(value: string): EmpaqueType {
 }
 
 const ROAST_TYPES = ['claro', 'medio', 'oscuro'] as const
+
+function parseFecha(value: unknown, campo: string): Date {
+  const fecha = typeof value === 'string' ? new Date(value) : new Date(NaN)
+  if (Number.isNaN(fecha.getTime())) throw new AppError(`Fecha inválida en "${campo}".`)
+  return fecha
+}
+
+// Gastos de compras (materia prima y bolsas) en un rango [desde, hasta).
+inventarioRouter.get(
+  '/gastos',
+  asyncHandler(async (req, res) => {
+    const desde = parseFecha(req.query.desde, 'desde')
+    const hasta = parseFecha(req.query.hasta, 'hasta')
+    if (hasta <= desde) throw new AppError('"hasta" debe ser posterior a "desde".')
+    res.json(await gastosService.getGastos(desde, hasta))
+  })
+)
 
 inventarioRouter.get(
   '/stock',
@@ -57,13 +75,15 @@ inventarioRouter.get(
 )
 
 const cantidadMotivoSchema = z.object({ cantidadLb: z.number().positive(), motivo: z.string().default('') })
+/** Costo total de la compra en quetzales; opcional porque no toda entrada es una compra. */
+const costoTotalSchema = z.number().nonnegative().max(9_999_999_999).optional()
 
 inventarioRouter.post(
   '/materia-prima/:material/entrada',
   asyncHandler(async (req, res) => {
     const material = parseRawMaterial(req.params.material)
-    const { cantidadLb, motivo } = cantidadMotivoSchema.parse(req.body)
-    await inventarioService.registrarEntradaMateriaPrima(material, cantidadLb, motivo)
+    const { cantidadLb, motivo, costoTotal } = cantidadMotivoSchema.extend({ costoTotal: costoTotalSchema }).parse(req.body)
+    await inventarioService.registrarEntradaMateriaPrima(material, cantidadLb, motivo, costoTotal)
     res.status(204).end()
   })
 )
@@ -194,8 +214,8 @@ inventarioRouter.post(
   '/empaque/:tipo/entrada',
   asyncHandler(async (req, res) => {
     const tipo = parseEmpaqueType(req.params.tipo)
-    const { cantidad, motivo } = cantidadMotivoEmpaqueSchema.parse(req.body)
-    await empaqueService.registrarEntradaEmpaque(tipo, cantidad, motivo)
+    const { cantidad, motivo, costoTotal } = cantidadMotivoEmpaqueSchema.extend({ costoTotal: costoTotalSchema }).parse(req.body)
+    await empaqueService.registrarEntradaEmpaque(tipo, cantidad, motivo, costoTotal)
     res.status(204).end()
   })
 )

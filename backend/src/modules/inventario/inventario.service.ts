@@ -46,7 +46,7 @@ async function addMovement(
   tipo: 'entrada' | 'salida',
   cantidadLb: number,
   motivo: string,
-  opts?: { referenciaTipo?: 'produccion_gourmet' | 'produccion_blend' | 'manual'; referenciaId?: string }
+  opts?: { referenciaTipo?: 'produccion_gourmet' | 'produccion_blend' | 'manual'; referenciaId?: string; costoTotal?: number }
 ) {
   const saldoResultante = await currentStock(db, material)
   await db.inventarioMovimiento.create({
@@ -58,6 +58,7 @@ async function addMovement(
       referenciaTipo: opts?.referenciaTipo ?? 'manual',
       referenciaId: opts?.referenciaId,
       saldoResultante,
+      costoTotal: opts?.costoTotal,
     },
   })
 }
@@ -161,11 +162,12 @@ export function getMovimientos(filter?: { material?: StockMaterial; desde?: Date
 // Materia prima
 // ---------------------------------------------------------------------------
 
-export async function registrarEntradaMateriaPrima(material: RawMaterialType, cantidadLb: number, motivo: string) {
+/** costoTotal: lo que se pagó por toda esta entrada (ej. el saco de 100 lb). Opcional: no toda entrada es una compra. */
+export async function registrarEntradaMateriaPrima(material: RawMaterialType, cantidadLb: number, motivo: string, costoTotal?: number) {
   if (cantidadLb <= 0) throw new AppError('La cantidad debe ser mayor que 0.')
   await prisma.$transaction(async tx => {
     await applyDelta(tx, material, cantidadLb)
-    await addMovement(tx, material, 'entrada', cantidadLb, motivo || 'Compra de materia prima')
+    await addMovement(tx, material, 'entrada', cantidadLb, motivo || 'Compra de materia prima', { costoTotal })
   })
 }
 

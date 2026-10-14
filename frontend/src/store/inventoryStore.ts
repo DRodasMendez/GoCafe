@@ -68,6 +68,8 @@ export interface InventoryMovement {
   motivo: string
   referenciaId?: string
   saldoResultante: number
+  /** Lo que se pagó por la entrada (Q). Null si no se registró costo. */
+  costoTotal: number | null
 }
 
 function emptyState(): InventoryState {
@@ -93,6 +95,7 @@ interface MovimientoDto {
   motivo: string
   referenciaId: string | null
   saldoResultante: string
+  costoTotal: string | null
 }
 
 function buildState(rows: StockDto[]): InventoryState {
@@ -123,6 +126,7 @@ function fromMovementDto(m: MovimientoDto): InventoryMovement {
     motivo: m.motivo,
     referenciaId: m.referenciaId ?? undefined,
     saldoResultante: Number(m.saldoResultante),
+    costoTotal: m.costoTotal == null ? null : Number(m.costoTotal),
   }
 }
 
@@ -147,6 +151,8 @@ export interface EmpaqueMovement {
   motivo: string
   referenciaId?: string
   saldoResultante: number
+  /** Lo que se pagó por la entrada (Q). Null si no se registró costo. */
+  costoTotal: number | null
 }
 
 interface EmpaqueMovimientoDto {
@@ -158,6 +164,7 @@ interface EmpaqueMovimientoDto {
   motivo: string
   referenciaId: string | null
   saldoResultante: number
+  costoTotal: string | null
 }
 
 function fromEmpaqueMovementDto(m: EmpaqueMovimientoDto): EmpaqueMovement {
@@ -170,6 +177,7 @@ function fromEmpaqueMovementDto(m: EmpaqueMovimientoDto): EmpaqueMovement {
     motivo: m.motivo,
     referenciaId: m.referenciaId ?? undefined,
     saldoResultante: m.saldoResultante,
+    costoTotal: m.costoTotal == null ? null : Number(m.costoTotal),
   }
 }
 
@@ -287,8 +295,9 @@ export function getRawMaterialStock(material: RawMaterialType): number {
 // Materia prima
 // ---------------------------------------------------------------------------
 
-export async function registrarEntradaMateriaPrima(material: RawMaterialType, cantidadLb: number, motivo: string): Promise<void> {
-  await apiFetch<void>(`/api/inventario/materia-prima/${material}/entrada`, { method: 'POST', body: { cantidadLb, motivo } })
+/** costoTotal: lo que costó toda la entrada (ej. el saco completo), en quetzales. Opcional. */
+export async function registrarEntradaMateriaPrima(material: RawMaterialType, cantidadLb: number, motivo: string, costoTotal?: number): Promise<void> {
+  await apiFetch<void>(`/api/inventario/materia-prima/${material}/entrada`, { method: 'POST', body: { cantidadLb, motivo, costoTotal } })
   await refresh()
 }
 
@@ -416,8 +425,8 @@ export function bagsEquivalent(lb: number) {
 // Empaque (bolsas físicas): entradas/salidas manuales (compras y correcciones) y umbrales
 // ---------------------------------------------------------------------------
 
-export async function registrarEntradaEmpaque(tipo: string, cantidad: number, motivo: string): Promise<void> {
-  await apiFetch<void>(`/api/inventario/empaque/${encodeURIComponent(tipo)}/entrada`, { method: 'POST', body: { cantidad, motivo } })
+export async function registrarEntradaEmpaque(tipo: string, cantidad: number, motivo: string, costoTotal?: number): Promise<void> {
+  await apiFetch<void>(`/api/inventario/empaque/${encodeURIComponent(tipo)}/entrada`, { method: 'POST', body: { cantidad, motivo, costoTotal } })
   await refresh()
 }
 
@@ -450,4 +459,35 @@ export function getEmpaqueAlerts(): EmpaqueAlert[] {
     }
   }
   return alerts
+}
+
+// ---------------------------------------------------------------------------
+// Gastos: lo que se pagó en compras de materia prima y bolsas en un periodo.
+// ---------------------------------------------------------------------------
+
+export interface GastoItem {
+  categoria: 'materia_prima' | 'empaque'
+  clave: string
+  label: string
+  unidad: 'lb' | 'bolsas'
+  cantidad: number
+  cantidadConCosto: number
+  costoTotal: number
+  precioPromedio: number | null
+  entradas: number
+  entradasSinCosto: number
+}
+
+export interface GastosResumen {
+  items: GastoItem[]
+  totalMateriaPrima: number
+  totalEmpaque: number
+  total: number
+  entradasSinCosto: number
+}
+
+/** Rango [desde, hasta). Se consulta aparte (no vive en el estado global) porque solo lo usa la página de Gastos. */
+export function fetchGastos(desde: Date, hasta: Date): Promise<GastosResumen> {
+  const qs = new URLSearchParams({ desde: desde.toISOString(), hasta: hasta.toISOString() })
+  return apiFetch<GastosResumen>(`/api/inventario/gastos?${qs}`)
 }

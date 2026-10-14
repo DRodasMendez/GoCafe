@@ -33,6 +33,7 @@ import {
   type StockMaterial,
 } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
+import { formatQ, parseCosto } from '../utils/money'
 import { errorMessage, toast } from '../components/ui/feedback'
 
 const DATE_TIME_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -125,7 +126,7 @@ export default function InventarioPage() {
                   />
                 ))}
               </div>
-              <MonthlyHistory title="Historial de movimientos — Materia prima" materials={['pergamino', 'oro', 'natural']} />
+              <MonthlyHistory title="Historial de movimientos — Materia prima" materials={['pergamino', 'oro', 'natural']} showCosto />
             </>
           )}
 
@@ -424,6 +425,7 @@ function EmpaqueHistory() {
                 <th className="px-4 pb-2 pt-4">Tipo de bolsa</th>
                 <th className="px-4 pb-2 pt-4">Movimiento</th>
                 <th className="px-4 pb-2 pt-4">Cantidad</th>
+                <th className="px-4 pb-2 pt-4">Costo</th>
                 <th className="px-4 pb-2 pt-4">Motivo</th>
                 <th className="px-4 pb-2 pt-4">Saldo</th>
               </tr>
@@ -439,6 +441,7 @@ function EmpaqueHistory() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5">{m.cantidad} unidades</td>
+                  <td className="whitespace-nowrap px-4 py-2.5"><CostoCell costo={m.costoTotal} cantidad={m.cantidad} unidad="bolsa" esEntrada={m.tipo === 'entrada'} /></td>
                   <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante}</td>
                 </tr>
@@ -451,8 +454,29 @@ function EmpaqueHistory() {
   )
 }
 
+/** Costo total de la compra (opcional) con el precio unitario calculado como referencia. */
+function CostoTotalField({ value, onChange, cantidad, unidad }: { value: string, onChange: (v: string) => void, cantidad: number, unidad: 'lb' | 'bolsa' }) {
+  const costo = parseCosto(value)
+  const unitario = typeof costo === 'number' && cantidad > 0 ? costo / cantidad : null
+  return (
+    <label className="mt-4 block">
+      <span className="label">Costo total (Q) — opcional</span>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-400">Q</span>
+        <input type="number" min="0" step="0.01" inputMode="decimal" className="input !pl-8" placeholder="0.00" value={value} onChange={e => onChange(e.target.value)} />
+      </div>
+      <span className="mt-1 block text-xs text-stone-500">
+        {unitario !== null
+          ? <>Sale a <b className="text-stone-700">{formatQ(unitario)}</b> por {unidad}.</>
+          : 'Lo que se pagó por todo lo que entra (ej. el saco completo). Déjalo vacío si no fue una compra.'}
+      </span>
+    </label>
+  )
+}
+
 function EmpaqueEntradaModal({ item, onClose }: { item: EmpaqueStockItem, onClose: () => void }) {
   const [cantidad, setCantidad] = useState('')
+  const [costo, setCosto] = useState('')
   const [motivo, setMotivo] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -462,10 +486,12 @@ function EmpaqueEntradaModal({ item, onClose }: { item: EmpaqueStockItem, onClos
     if (submitting) return
     const cantidadNum = Math.floor(Number(cantidad) || 0)
     if (cantidadNum <= 0) { setError('Ingresa una cantidad mayor que 0.'); return }
+    const costoTotal = parseCosto(costo)
+    if (costoTotal === null) { setError('El costo debe ser un número mayor o igual a 0.'); return }
     setSubmitting(true)
     try {
-      await registrarEntradaEmpaque(item.tipo, cantidadNum, motivo)
-      toast.success(`Se registraron ${cantidadNum} bolsas de ${item.label}.`)
+      await registrarEntradaEmpaque(item.tipo, cantidadNum, motivo, costoTotal)
+      toast.success(`Se registraron ${cantidadNum} bolsas de ${item.label}${costoTotal !== undefined ? ` (${formatQ(costoTotal)})` : ''}.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la entrada.')
@@ -478,6 +504,7 @@ function EmpaqueEntradaModal({ item, onClose }: { item: EmpaqueStockItem, onClos
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
       <form onSubmit={handleSubmit}>
         <label className="block"><span className="label">Cantidad (unidades)</span><input type="number" min="0" step="1" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
+        <CostoTotalField value={costo} onChange={v => { setError(''); setCosto(v) }} cantidad={Math.floor(Number(cantidad) || 0)} unidad="bolsa" />
         <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Compra a proveedor..." value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
         <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
           {submitting && <Loader2 size={16} className="animate-spin" />} Registrar entrada
@@ -541,7 +568,20 @@ function FinishedStockCard({ label, lb, bags, onSalida, icon: Icon = PackageChec
   )
 }
 
-function MonthlyHistory({ title, materials }: { title: string, materials: StockMaterial[] }) {
+/** Costo de una entrada y su precio unitario; las salidas no son compras, así que no llevan costo. */
+function CostoCell({ costo, cantidad, unidad, esEntrada }: { costo: number | null, cantidad: number, unidad: 'lb' | 'bolsa', esEntrada: boolean }) {
+  if (!esEntrada) return <span className="text-stone-300">—</span>
+  if (costo === null) return <span className="text-xs text-stone-400">Sin costo</span>
+  return (
+    <span>
+      <b className="text-stone-900">{formatQ(costo)}</b>
+      {cantidad > 0 && <span className="block text-xs text-stone-500">{formatQ(costo / cantidad)} / {unidad}</span>}
+    </span>
+  )
+}
+
+/** showCosto: solo la materia prima se compra; el grano y el producto terminado salen de la producción. */
+function MonthlyHistory({ title, materials, showCosto = false }: { title: string, materials: StockMaterial[], showCosto?: boolean }) {
   const allMovements = useMovements()
   const [materialFiltro, setMaterialFiltro] = useState<StockMaterial | 'all'>('all')
   const [dia, setDia] = useState(todayISODate())
@@ -591,6 +631,7 @@ function MonthlyHistory({ title, materials }: { title: string, materials: StockM
                 {materials.length > 1 && <th className="px-4 pb-2 pt-4">Material</th>}
                 <th className="px-4 pb-2 pt-4">Movimiento</th>
                 <th className="px-4 pb-2 pt-4">Cantidad</th>
+                {showCosto && <th className="px-4 pb-2 pt-4">Costo</th>}
                 <th className="px-4 pb-2 pt-4">Motivo</th>
                 <th className="px-4 pb-2 pt-4">Saldo</th>
               </tr>
@@ -606,6 +647,7 @@ function MonthlyHistory({ title, materials }: { title: string, materials: StockM
                     </span>
                   </td>
                   <td className="px-4 py-2.5">{m.cantidad.toFixed(2)} lb</td>
+                  {showCosto && <td className="whitespace-nowrap px-4 py-2.5"><CostoCell costo={m.costoTotal} cantidad={m.cantidad} unidad="lb" esEntrada={m.tipo === 'entrada'} /></td>}
                   <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante.toFixed(2)}</td>
                 </tr>
@@ -647,6 +689,7 @@ function Modal({ title, onClose, children }: { title: string, onClose: () => voi
 
 function EntradaModal({ material, onClose }: { material: RawMaterialType, onClose: () => void }) {
   const [cantidad, setCantidad] = useState('')
+  const [costo, setCosto] = useState('')
   const [motivo, setMotivo] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -656,10 +699,12 @@ function EntradaModal({ material, onClose }: { material: RawMaterialType, onClos
     if (submitting) return
     const cantidadLb = Number(cantidad) || 0
     if (cantidadLb <= 0) { setError('Ingresa una cantidad mayor que 0.'); return }
+    const costoTotal = parseCosto(costo)
+    if (costoTotal === null) { setError('El costo debe ser un número mayor o igual a 0.'); return }
     setSubmitting(true)
     try {
-      await registrarEntradaMateriaPrima(material, cantidadLb, motivo)
-      toast.success(`Entrada de ${cantidadLb} lb de ${RAW_MATERIAL_LABELS[material]} registrada.`)
+      await registrarEntradaMateriaPrima(material, cantidadLb, motivo, costoTotal)
+      toast.success(`Entrada de ${cantidadLb} lb de ${RAW_MATERIAL_LABELS[material]} registrada${costoTotal !== undefined ? ` (${formatQ(costoTotal)})` : ''}.`)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la entrada.')
@@ -672,6 +717,7 @@ function EntradaModal({ material, onClose }: { material: RawMaterialType, onClos
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>}
       <form onSubmit={handleSubmit}>
         <label className="block"><span className="label">Cantidad (lb)</span><input type="number" min="0" step="0.01" autoFocus className="input" value={cantidad} onChange={e => { setError(''); setCantidad(e.target.value) }} /></label>
+        <CostoTotalField value={costo} onChange={v => { setError(''); setCosto(v) }} cantidad={Number(cantidad) || 0} unidad="lb" />
         <label className="mt-4 block"><span className="label">Motivo (opcional)</span><input className="input" placeholder="Compra a proveedor..." value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
         <button type="submit" className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={submitting}>
           {submitting && <Loader2 size={16} className="animate-spin" />} Registrar entrada

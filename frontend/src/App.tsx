@@ -14,6 +14,7 @@ import NuevaProduccionBlendPage from './pages/NuevaProduccionBlendPage'
 import ProduccionDetailPage from './pages/ProduccionDetailPage'
 import InventarioPage from './pages/InventarioPage'
 import FacturacionPage from './pages/FacturacionPage'
+import GastosPage from './pages/GastosPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/produccion/:id" element={<ProduccionDetailPage />} />
           <Route path="/inventario" element={<InventarioPage />} />
           <Route path="/facturacion" element={<FacturacionPage />} />
+          <Route path="/gastos" element={<GastosPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFoundPage />} />

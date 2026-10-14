@@ -269,6 +269,8 @@ model InventarioMovimiento {
   referenciaTipo  ReferenciaTipo? @map("referencia_tipo")
   referenciaId    String?         @map("referencia_id")
   saldoResultante Decimal         @map("saldo_resultante") @db.Decimal(10, 2)
+  /** Cuánto se pagó por esta entrada (compra), en quetzales. Null = sin costo registrado o no es una compra. */
+  costoTotal      Decimal?        @map("costo_total") @db.Decimal(12, 2)
 
   @@index([material, fecha])
   @@map("inventario_movimientos")
@@ -315,6 +317,8 @@ model InventarioEmpaqueMovimiento {
   referenciaTipo  ReferenciaTipo? @map("referencia_tipo")
   referenciaId    String?         @map("referencia_id")
   saldoResultante Int             @map("saldo_resultante")
+  /** Cuánto se pagó por esta entrada (compra de bolsas), en quetzales. Null = sin costo registrado o no es una compra. */
+  costoTotal      Decimal?        @map("costo_total") @db.Decimal(12, 2)
 
   @@index([tipoEmpaque, fecha])
   @@map("inventario_empaque_movimientos")

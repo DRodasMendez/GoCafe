@@ -1,4 +1,4 @@
-import { Coffee, LayoutDashboard, LogOut, ReceiptText, Users, Warehouse } from 'lucide-react'
+import { Coffee, LayoutDashboard, LogOut, ReceiptText, Users, Wallet, Warehouse } from 'lucide-react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { logout } from '../store/authStore'
 
@@ -8,6 +8,7 @@ const items = [
   { to: '/produccion', label: 'Producción', icon: Coffee, enabled: true },
   { to: '/inventario', label: 'Inventario', icon: Warehouse, enabled: true },
   { to: '/facturacion', label: 'Facturación', icon: ReceiptText, enabled: true },
+  { to: '/gastos', label: 'Gastos', icon: Wallet, enabled: true },
 ]
 
 export default function Sidebar({ open, onClose }: { open: boolean, onClose: () => void }) {

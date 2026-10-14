@@ -228,3 +228,57 @@ describe('inventario de empaque (bolsas)', () => {
     expect(sinAlerta.body.some((a: any) => a.tipo === 'kraft con válvula')).toBe(false)
   })
 })
+
+describe('control de gastos (costo de las compras)', () => {
+  const mes = { desde: '2000-01-01T00:00:00.000Z', hasta: '2100-01-01T00:00:00.000Z' }
+
+  it('guarda el costo total de la entrada y lo devuelve en el historial', async () => {
+    await request(app).post('/api/inventario/materia-prima/pergamino/entrada').set(authHeader(token)).send({ cantidadLb: 100, costoTotal: 1500 })
+    await request(app).post('/api/inventario/empaque/comercial/entrada').set(authHeader(token)).send({ cantidad: 200, costoTotal: 300 })
+
+    const mov = await request(app).get('/api/inventario/movimientos').set(authHeader(token)).query({ material: 'pergamino' })
+    expect(Number(mov.body[0].costoTotal)).toBe(1500)
+    const movEmp = await request(app).get('/api/inventario/empaque/movimientos').set(authHeader(token)).query({ tipo: 'comercial' })
+    expect(Number(movEmp.body[0].costoTotal)).toBe(300)
+  })
+
+  it('rechaza un costo negativo y permite entradas sin costo', async () => {
+    const neg = await request(app).post('/api/inventario/materia-prima/oro/entrada').set(authHeader(token)).send({ cantidadLb: 10, costoTotal: -5 })
+    expect(neg.status).toBe(400)
+    const sinCosto = await request(app).post('/api/inventario/materia-prima/oro/entrada').set(authHeader(token)).send({ cantidadLb: 10 })
+    expect(sinCosto.status).toBe(204)
+  })
+
+  it('suma los gastos del periodo por material y por bolsa, con precio promedio', async () => {
+    await request(app).post('/api/inventario/materia-prima/pergamino/entrada').set(authHeader(token)).send({ cantidadLb: 100, costoTotal: 1500 })
+    await request(app).post('/api/inventario/materia-prima/pergamino/entrada').set(authHeader(token)).send({ cantidadLb: 50, costoTotal: 800 })
+    await request(app).post('/api/inventario/materia-prima/pergamino/entrada').set(authHeader(token)).send({ cantidadLb: 20 })
+    await request(app).post('/api/inventario/empaque/especial/entrada').set(authHeader(token)).send({ cantidad: 100, costoTotal: 250 })
+
+    const res = await request(app).get('/api/inventario/gastos').set(authHeader(token)).query(mes)
+    expect(res.status).toBe(200)
+    const perg = res.body.items.find((i: any) => i.clave === 'pergamino')
+    expect(perg.costoTotal).toBe(2300)
+    expect(perg.cantidad).toBe(170)
+    expect(perg.entradasSinCosto).toBe(1)
+    expect(perg.precioPromedio).toBe(15.33) // 2300 / 150 lb con costo
+    expect(res.body.totalMateriaPrima).toBe(2300)
+    expect(res.body.totalEmpaque).toBe(250)
+    expect(res.body.total).toBe(2550)
+  })
+
+  it('no cuenta salidas ni fechas fuera del rango', async () => {
+    await request(app).post('/api/inventario/materia-prima/pergamino/entrada').set(authHeader(token)).send({ cantidadLb: 100, costoTotal: 1500 })
+    await request(app).post('/api/inventario/materia-prima/pergamino/salida').set(authHeader(token)).send({ cantidadLb: 10 })
+    const fuera = await request(app).get('/api/inventario/gastos').set(authHeader(token)).query({ desde: '2000-01-01', hasta: '2000-02-01' })
+    expect(fuera.body.total).toBe(0)
+    const dentro = await request(app).get('/api/inventario/gastos').set(authHeader(token)).query(mes)
+    expect(dentro.body.items).toHaveLength(1)
+    expect(dentro.body.items[0].cantidad).toBe(100)
+  })
+
+  it('rechaza fechas inválidas', async () => {
+    const res = await request(app).get('/api/inventario/gastos').set(authHeader(token)).query({ desde: 'x', hasta: '2026-01-01' })
+    expect(res.status).toBe(400)
+  })
+})

@@ -30,7 +30,7 @@ async function addMovement(
   movimiento: 'entrada' | 'salida',
   cantidad: number,
   motivo: string,
-  opts?: { referenciaTipo?: 'produccion_gourmet' | 'produccion_blend' | 'orden' | 'manual'; referenciaId?: string }
+  opts?: { referenciaTipo?: 'produccion_gourmet' | 'produccion_blend' | 'orden' | 'manual'; referenciaId?: string; costoTotal?: number }
 ) {
   const saldoResultante = await currentStock(db, tipo)
   await db.inventarioEmpaqueMovimiento.create({
@@ -42,6 +42,7 @@ async function addMovement(
       referenciaTipo: opts?.referenciaTipo ?? 'manual',
       referenciaId: opts?.referenciaId,
       saldoResultante,
+      costoTotal: opts?.costoTotal,
     },
   })
 }
@@ -108,11 +109,12 @@ export function getEmpaqueMovimientos(filter?: { tipo?: EmpaqueType; desde?: Dat
 // Entradas / salidas manuales (compras y correcciones de captura)
 // ---------------------------------------------------------------------------
 
-export async function registrarEntradaEmpaque(tipo: EmpaqueType, cantidad: number, motivo: string) {
+/** costoTotal: lo que se pagó por toda esta compra de bolsas. Opcional: no toda entrada es una compra. */
+export async function registrarEntradaEmpaque(tipo: EmpaqueType, cantidad: number, motivo: string, costoTotal?: number) {
   if (cantidad <= 0) throw new AppError('La cantidad debe ser mayor que 0.')
   await prisma.$transaction(async tx => {
     await applyDelta(tx, tipo, cantidad)
-    await addMovement(tx, tipo, 'entrada', cantidad, motivo || 'Compra de bolsas')
+    await addMovement(tx, tipo, 'entrada', cantidad, motivo || 'Compra de bolsas', { costoTotal })
   })
 }
 
