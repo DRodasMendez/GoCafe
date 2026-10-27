@@ -13,6 +13,7 @@ import {
 } from '../store/productionStore'
 import { useEmpaqueStock, useInventory } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
+import { formatISODate } from '../utils/dates'
 import { Field, SectionTitle, Stat } from '../components/FormParts'
 import PageLoader from '../components/ui/PageLoader'
 import WizardSteps, { WizardNav } from '../components/ui/WizardSteps'
@@ -417,7 +418,7 @@ function BlendForm({ id }: { id?: string }) {
             <Stat label="Molido y mezcla" value={`${molidoMezclaLb.toFixed(2)} lb`} />
             <Stat label="Bolsas completas" value={`${effectiveFullBags}`} />
             <Stat label="Sobrante" value={`${effectiveRemainder.toFixed(1)} g`} />
-            <Stat label="Fecha" value={fecha} />
+            <Stat label="Fecha" value={formatISODate(fecha)} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Merma en trillado" value={`${merma.mermaTrillado.toFixed(2)} lb`} />

@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef, useState } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { es } from 'react-day-picker/locale'
-import { CalendarDays } from 'lucide-react'
-import 'react-day-picker/style.css'
+import { CalendarDays, ChevronDown } from 'lucide-react'
+import Popover from './ui/Popover'
+import { CalendarFooter, CalendarHeader, FooterButton, MONTHS_LONG, MonthGrid, monthKey } from './ui/calendar'
+import { todayISODate } from '../utils/production'
 
 function fromISODate(value: string): Date | undefined {
   if (!value) return undefined
@@ -17,7 +18,39 @@ function toISODate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-const DISPLAY_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
+const DISPLAY_FORMAT = new Intl.DateTimeFormat('es-GT', { day: 'numeric', month: 'long', year: 'numeric' })
+const WEEKDAY_FORMAT = new Intl.DateTimeFormat('es-GT', { weekday: 'short' })
+
+/** "lun" → "Lu", "sáb" → "Sá". */
+const weekdayName = (d: Date) => {
+  const s = WEEKDAY_FORMAT.format(d)
+  return s.charAt(0).toUpperCase() + s.charAt(1)
+}
+
+/**
+ * Sin la hoja de estilos de react-day-picker: todo el aspecto sale de aquí, con los mismos
+ * colores y radios que el resto del sistema. Los modificadores (seleccionado, hoy, fuera del
+ * mes) se aplican a la celda, por eso apuntan al botón de adentro con [&>button].
+ */
+const DAY_CLASSES = {
+  root: 'select-none',
+  months: '',
+  month: '',
+  month_caption: 'sr-only',
+  month_grid: 'border-collapse',
+  weekdays: '',
+  weekday: 'h-8 w-10 pb-1 text-center text-[11px] font-semibold uppercase tracking-wide text-stone-400',
+  weeks: '',
+  week: '',
+  day: 'p-0.5 text-center',
+  day_button: 'inline-flex h-9 w-9 items-center justify-center rounded-lg text-sm text-stone-700 transition hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40',
+}
+
+const DAY_MODIFIERS = {
+  today: '[&>button]:font-bold [&>button]:text-amber-700 [&>button]:ring-1 [&>button]:ring-inset [&>button]:ring-amber-300',
+  outside: '[&>button]:text-stone-300',
+  selected: '[&>button]:!bg-amber-500 [&>button]:!font-semibold [&>button]:!text-stone-950 [&>button]:!ring-0 [&>button]:shadow-sm',
+}
 
 export default function DatePickerField({
   value,
@@ -29,86 +62,90 @@ export default function DatePickerField({
   placeholder?: string
 }) {
   const [open, setOpen] = useState(false)
-  const [coords, setCoords] = useState<{ top: number, left: number } | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
+  const [view, setView] = useState<'days' | 'months'>('days')
   const selected = fromISODate(value)
+  const [month, setMonth] = useState<Date>(() => selected ?? new Date())
+  const buttonRef = useRef<HTMLButtonElement>(null)
 
-  const updateCoords = () => {
-    const rect = buttonRef.current?.getBoundingClientRect()
-    if (rect) setCoords({ top: rect.bottom + 8, left: rect.left })
+  const toggle = () => {
+    if (!open) {
+      setMonth(selected ?? new Date())
+      setView('days')
+    }
+    setOpen(o => !o)
   }
 
-  useEffect(() => {
-    if (!open) return
-    updateCoords()
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (containerRef.current?.contains(target) || popupRef.current?.contains(target)) return
-      setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    window.addEventListener('scroll', updateCoords, true)
-    window.addEventListener('resize', updateCoords)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      window.removeEventListener('scroll', updateCoords, true)
-      window.removeEventListener('resize', updateCoords)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  const pick = (date: Date) => {
+    onChange(toISODate(date))
+    setOpen(false)
+  }
 
-  // Una vez montado el popup, lo acomoda dentro de la ventana si se sale por la derecha o por abajo.
-  useLayoutEffect(() => {
-    if (!open || !coords || !popupRef.current) return
-    const rect = popupRef.current.getBoundingClientRect()
-    let { top, left } = coords
-    const margin = 8
-    if (left + rect.width > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - rect.width - margin)
-    if (top + rect.height > window.innerHeight - margin) top = Math.max(margin, (buttonRef.current?.getBoundingClientRect().top ?? top) - rect.height - 8)
-    if (top !== coords.top || left !== coords.left) setCoords({ top, left })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, coords?.top, coords?.left])
+  const shiftMonth = (delta: number) => setMonth(m => new Date(m.getFullYear(), m.getMonth() + delta, 1))
+  const shiftYear = (delta: number) => setMonth(m => new Date(m.getFullYear() + delta, m.getMonth(), 1))
+  const today = new Date()
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative">
       <button
         ref={buttonRef}
         type="button"
-        className="input flex items-center justify-between gap-2 text-left"
-        onClick={() => setOpen(o => !o)}
+        className={`input flex items-center justify-between gap-2 text-left ${open ? '!border-amber-500 !ring-4 !ring-amber-500/10' : ''}`}
+        onClick={toggle}
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
-        <span className={selected ? 'text-stone-900' : 'text-stone-400'}>
+        <span className={`flex items-center gap-2 ${selected ? 'text-stone-900' : 'text-stone-400'}`}>
+          <CalendarDays size={16} className="shrink-0 text-stone-400" />
           {selected ? DISPLAY_FORMAT.format(selected) : placeholder}
         </span>
-        <CalendarDays size={16} className="shrink-0 text-amber-600" />
+        <ChevronDown size={16} className={`shrink-0 text-stone-400 transition ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && coords && createPortal(
-        <div
-          ref={popupRef}
-          className="fixed z-50 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl"
-          style={{ top: coords.top, left: coords.left }}
-        >
-          <DayPicker
-            mode="single"
-            locale={es}
-            captionLayout="dropdown"
-            startMonth={new Date(2015, 0)}
-            endMonth={new Date(new Date().getFullYear() + 3, 11)}
-            selected={selected}
-            defaultMonth={selected}
-            onSelect={date => {
-              if (date) {
-                onChange(toISODate(date))
-                setOpen(false)
-              }
-            }}
-          />
-        </div>,
-        document.body
-      )}
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef}>
+        {view === 'days' ? (
+          <>
+            <CalendarHeader
+              title={`${MONTHS_LONG[month.getMonth()]} ${month.getFullYear()}`}
+              titleHint="Elegir otro mes o año"
+              onTitleClick={() => setView('months')}
+              onPrev={() => shiftMonth(-1)}
+              onNext={() => shiftMonth(1)}
+            />
+            <DayPicker
+              mode="single"
+              locale={es}
+              month={month}
+              onMonthChange={setMonth}
+              hideNavigation
+              showOutsideDays
+              fixedWeeks
+              selected={selected}
+              onSelect={date => { if (date) pick(date) }}
+              classNames={DAY_CLASSES}
+              modifiersClassNames={DAY_MODIFIERS}
+              formatters={{ formatWeekdayName: weekdayName }}
+            />
+          </>
+        ) : (
+          <>
+            <CalendarHeader title={String(month.getFullYear())} onPrev={() => shiftYear(-1)} onNext={() => shiftYear(1)} />
+            <MonthGrid
+              year={month.getFullYear()}
+              selectedKey={selected ? monthKey(selected.getFullYear(), selected.getMonth()) : undefined}
+              currentKey={monthKey(today.getFullYear(), today.getMonth())}
+              onSelect={key => {
+                const [y, m] = key.split('-').map(Number)
+                setMonth(new Date(y, m - 1, 1))
+                setView('days')
+              }}
+            />
+          </>
+        )}
+        <CalendarFooter>
+          <FooterButton onClick={() => pick(fromISODate(todayISODate())!)}>Hoy</FooterButton>
+          <FooterButton muted onClick={() => setOpen(false)}>Cerrar</FooterButton>
+        </CalendarFooter>
+      </Popover>
     </div>
   )
 }

@@ -38,10 +38,10 @@ import {
 } from '../store/inventoryStore'
 import { formatQ, parseCosto } from '../utils/money'
 import { errorMessage, toast } from '../components/ui/feedback'
-import MonthFilter from '../components/MonthFilter'
+import { formatMonthKey } from '../components/ui/calendar'
+import MonthPicker from '../components/MonthPicker'
 
 const DATE_TIME_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
 const INVENTORY_TABS = [
   { id: 'materia-prima', label: 'Materia prima', icon: Coffee },
@@ -367,14 +367,14 @@ function EmpaqueHistory() {
               {empaqueStock.map(e => <option key={e.tipo} value={e.tipo}>{e.label}</option>)}
             </select>
           </div>
-          <MonthFilter value={mes} onChange={setMes} />
+          <MonthPicker value={mes} onChange={setMes} allowAll />
         </div>
       </div>
 
       {shown.length === 0 ? (
         <div className="flex min-h-32 flex-col items-center justify-center p-6 text-center">
           <Warehouse size={22} className="mb-2 text-stone-300" />
-          <p className="text-sm text-stone-500">{mes ? `Sin movimientos en ${MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`))}.` : 'Sin movimientos registrados.'}</p>
+          <p className="text-sm text-stone-500">{mes ? `Sin movimientos en ${formatMonthKey(mes)}.` : 'Sin movimientos registrados.'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -402,7 +402,7 @@ function EmpaqueHistory() {
                   </td>
                   <td className="px-4 py-2.5">{m.cantidad} bolsas</td>
                   <td className="whitespace-nowrap px-4 py-2.5"><CostoCell mov={m} unidad="bolsa" onCorregir={() => setCorrigiendo(m)} /></td>
-                  <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
+                  <td className="min-w-44 px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante}</td>
                 </tr>
               ))}
@@ -638,14 +638,14 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
               {materials.map(m => <option key={m} value={m}>{STOCK_LABELS[m]}</option>)}
             </select></div>
           )}
-          <MonthFilter value={mes} onChange={setMes} />
+          <MonthPicker value={mes} onChange={setMes} allowAll />
         </div>
       </div>
 
       {shown.length === 0 ? (
         <div className="flex min-h-32 flex-col items-center justify-center p-6 text-center">
           <Warehouse size={22} className="mb-2 text-stone-300" />
-          <p className="text-sm text-stone-500">{mes ? `Sin movimientos en ${MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`))}.` : 'Sin movimientos registrados.'}</p>
+          <p className="text-sm text-stone-500">{mes ? `Sin movimientos en ${formatMonthKey(mes)}.` : 'Sin movimientos registrados.'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -673,7 +673,7 @@ function MonthlyHistory({ title, materials, showCosto = false }: { title: string
                   </td>
                   <td className="px-4 py-2.5">{m.cantidad.toFixed(2)} lb</td>
                   {showCosto && <td className="whitespace-nowrap px-4 py-2.5"><CostoCell mov={m} unidad="lb" onCorregir={() => setCorrigiendo(m)} /></td>}
-                  <td className="px-4 py-2.5 text-stone-500">{m.motivo}</td>
+                  <td className="min-w-44 px-4 py-2.5 text-stone-500">{m.motivo}</td>
                   <td className="px-4 py-2.5 font-semibold text-stone-900">{m.saldoResultante.toFixed(2)}</td>
                 </tr>
               ))}

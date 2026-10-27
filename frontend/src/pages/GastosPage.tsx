@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Coffee, Loader2, Package, Wallet } from 'lucide-react'
 import { fetchGastos, type GastoItem, type GastosResumen } from '../store/inventoryStore'
 import { errorMessage } from '../components/ui/feedback'
+import { formatMonthKey } from '../components/ui/calendar'
+import MonthPicker from '../components/MonthPicker'
 import { todayISODate } from '../utils/production'
 import { formatQ } from '../utils/money'
 
-const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
 /** "YYYY-MM" → [primer día del mes, primer día del mes siguiente), en hora local. */
 function monthRange(mes: string): [Date, Date] {
@@ -33,7 +34,7 @@ export default function GastosPage() {
     return () => { cancelled = true }
   }, [mes])
 
-  const periodoLabel = mes ? MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`)) : ''
+  const periodoLabel = mes ? formatMonthKey(mes) : ''
   const materia = data?.items.filter(i => i.categoria === 'materia_prima') ?? []
   const empaque = data?.items.filter(i => i.categoria === 'empaque') ?? []
 
@@ -44,7 +45,7 @@ export default function GastosPage() {
           <h2 className="page-title">Control de gastos</h2>
           <p className="mt-1 text-sm text-stone-500">Lo que se pagó en compras de café y bolsas</p>
         </div>
-        <input type="month" className="input w-48" value={mes} onChange={e => e.target.value && setMes(e.target.value)} aria-label="Mes" />
+        <MonthPicker value={mes} onChange={setMes} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

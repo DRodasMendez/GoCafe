@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Blend, Boxes, Coffee, PackageCheck, Trash2, X } from 'lucide-react'
+import { Blend, Boxes, Coffee, PackageCheck, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PRODUCTION_STATUS_LABELS, roastedAllocatedLb, type Production } from '../types/production'
 import { deleteBlendProduction, deleteGourmetProduction, useAllProductions } from '../store/productionStore'
 import { packagedWeightLb, todayISODate } from '../utils/production'
 import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
+import { formatMonthKey } from '../components/ui/calendar'
+import MonthPicker from '../components/MonthPicker'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
-const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
 type Tab = 'gourmet' | 'blend'
 
@@ -35,7 +36,7 @@ export default function ProduccionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, mesFiltro])
 
-  const periodoLabel = mesFiltro ? MONTH_FORMAT.format(new Date(`${mesFiltro}-01T00:00:00`)) : 'todo el histórico'
+  const periodoLabel = mesFiltro ? formatMonthKey(mesFiltro) : 'todo el histórico'
 
   const handleDelete = async (e: React.MouseEvent, p: Production) => {
     e.stopPropagation()
@@ -108,8 +109,7 @@ export default function ProduccionPage() {
             <TabButton active={tab === 'blend'} onClick={() => setTab('blend')} icon={Blend} label="Blend" />
           </div>
           <div className="flex items-center gap-2">
-            <input type="month" className="input w-48" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} aria-label="Mes" />
-            {mesFiltro && <button type="button" className="icon-btn" title="Ver todo el histórico" onClick={() => setMesFiltro('')}><X size={16} /></button>}
+            <MonthPicker value={mesFiltro} onChange={setMesFiltro} allowAll />
           </div>
         </div>
 

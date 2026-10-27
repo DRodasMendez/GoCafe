@@ -6,10 +6,11 @@ import { generateInvoicePdf } from '../utils/invoicePdf'
 import { todayISODate } from '../utils/production'
 import { formatQ } from '../utils/money'
 import { confirmDialog, errorMessage, toast } from '../components/ui/feedback'
+import { formatMonthKey } from '../components/ui/calendar'
+import MonthPicker from '../components/MonthPicker'
 import type { Order } from '../types/order'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })
-const MONTH_FORMAT = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric' })
 
 type Vista = 'mes' | 'pendientes'
 
@@ -41,7 +42,7 @@ export default function FacturacionPage() {
     [allOrders]
   )
 
-  const periodoLabel = MONTH_FORMAT.format(new Date(`${mes}-01T00:00:00`))
+  const periodoLabel = formatMonthKey(mes)
   // Por fecha de PAGO: una orden finalizada en septiembre y cobrada en octubre cuenta como cobrada en octubre.
   const cobradoMes = finalizadas.filter(o => o.pagado && inMonth(o.pagadoAt, mes)).reduce((s, o) => s + o.totalPrice, 0)
   const finalizadoMes = finalizadas.filter(o => inMonth(o.finalizedAt, mes)).reduce((s, o) => s + o.totalPrice, 0)
@@ -99,7 +100,7 @@ export default function FacturacionPage() {
           <h2 className="page-title">Cobros</h2>
           <p className="mt-1 text-sm text-stone-500">Órdenes finalizadas de clientes y su pago.</p>
         </div>
-        <input type="month" className="input w-48" value={mes} onChange={e => e.target.value && setMes(e.target.value)} aria-label="Mes" />
+        <MonthPicker value={mes} onChange={setMes} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

@@ -12,6 +12,7 @@ import {
 } from '../store/productionStore'
 import { getRawMaterialStock, useInventory } from '../store/inventoryStore'
 import DatePickerField from '../components/DatePickerField'
+import { formatISODate } from '../utils/dates'
 import { Field, SectionTitle, Stat } from '../components/FormParts'
 import PageLoader from '../components/ui/PageLoader'
 import WizardSteps, { WizardNav } from '../components/ui/WizardSteps'
@@ -257,7 +258,7 @@ function GourmetForm({ id }: { id?: string }) {
           <SectionTitle title="1. Pergamino" subtitle="Café de primera que se usará como base de este lote de Gourmet." />
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <Stat label="Pergamino disponible en inventario" value={`${pergaminoAvailable.toFixed(2)} lb`} />
-            <Stat label="Fecha del lote" value={fecha} />
+            <Stat label="Fecha del lote" value={formatISODate(fecha)} />
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Fecha"><DatePickerField value={fecha} onChange={setFecha} /></Field>
@@ -422,7 +423,7 @@ function GourmetForm({ id }: { id?: string }) {
             <Stat label="Bolsas completas" value={`${effectiveFullBags}`} />
             <Stat label="Comercial" value={`${effectiveComercialBags} bolsas`} />
             <Stat label="Especial" value={`${effectiveEspecialBags} bolsas`} />
-            <Stat label="Fecha" value={fecha} />
+            <Stat label="Fecha" value={formatISODate(fecha)} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Merma en trillado" value={`${merma.mermaTrillado.toFixed(2)} lb`} />
